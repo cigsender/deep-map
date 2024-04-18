@@ -443,6 +443,7 @@ import Data.Data
 import Data.Either (isLeft)
 import Data.Foldable (Foldable (fold, foldl', foldr', toList))
 import Data.Foldable.WithIndex
+import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Functor.Compose (Compose (..))
 import Data.Functor.Const (Const (..))
@@ -661,7 +662,7 @@ instance
   to ::
     (Ord k, Generic k, Generic (DeepMap ks v)) =>
     (Rep (DeepMap (k : ks) v) x -> DeepMap (k : ks) v)
-  to (Compose kvs) = Nest . Map.fromList $ (\(Const k :*: dm') -> (k, to dm')) <$> kvs
+  to (Compose kvs) = Nest . Map.fromList $ kvs <&> \(Const k :*: dm') -> (k, to dm')
 
 -- | Apply a two-argument function through a shallow 'DeepMap', akin to 'liftA2'.
 onBare2 :: (v -> w -> x) -> DeepMap '[] v -> DeepMap '[] w -> DeepMap '[] x
@@ -835,9 +836,8 @@ fromListWithKey2 ::
   [(k0, k1, v)] ->
   DeepMap '[k0, k1] v
 fromListWithKey2 f kvs =
-  fromListWithKey (unionWithKey1 . f)
-    $ (\(k0, k1, v) -> (k0, k1 @| v))
-    <$> kvs
+  fromListWithKey (unionWithKey1 . f) $
+    kvs <&> \(k0, k1, v) -> (k0, k1 @| v)
 
 -- | /O(n log n)/. Build a depth-3 'DeepMap' from a list of keys and values with a combining function.
 fromListWithKey3 ::
@@ -846,9 +846,8 @@ fromListWithKey3 ::
   [(k0, k1, k2, v)] ->
   DeepMap '[k0, k1, k2] v
 fromListWithKey3 f kvs =
-  fromListWithKey (unionWithKey2 . f)
-    $ (\(k0, k1, k2, v) -> (k0, k1 @> k2 @| v))
-    <$> kvs
+  fromListWithKey (unionWithKey2 . f) $
+    kvs <&> \(k0, k1, k2, v) -> (k0, k1 @> k2 @| v)
 
 -- | /O(n log n)/. Build a depth-3 'DeepMap' from a list of keys and values with a combining function.
 fromListWithKey4 ::
@@ -857,9 +856,8 @@ fromListWithKey4 ::
   [(k0, k1, k2, k3, v)] ->
   DeepMap '[k0, k1, k2, k3] v
 fromListWithKey4 f kvs =
-  fromListWithKey (unionWithKey3 . f)
-    $ (\(k0, k1, k2, k3, v) -> (k0, k1 @> k2 @> k3 @| v))
-    <$> kvs
+  fromListWithKey (unionWithKey3 . f) $
+    kvs <&> \(k0, k1, k2, k3, v) -> (k0, k1 @> k2 @> k3 @| v)
 
 -- | /O(n log n)/. Build a depth-3 'DeepMap' from a list of keys and values with a combining function.
 fromListWithKey5 ::
@@ -868,9 +866,8 @@ fromListWithKey5 ::
   [(k0, k1, k2, k3, k4, v)] ->
   DeepMap '[k0, k1, k2, k3, k4] v
 fromListWithKey5 f kvs =
-  fromListWithKey (unionWithKey4 . f)
-    $ (\(k0, k1, k2, k3, k4, v) -> (k0, k1 @> k2 @> k3 @> k4 @| v))
-    <$> kvs
+  fromListWithKey (unionWithKey4 . f) $
+    kvs <&> \(k0, k1, k2, k3, k4, v) -> (k0, k1 @> k2 @> k3 @> k4 @| v)
 
 -- | /O(log n)/. Insert a key/'DeepMap' pair into the 'DeepMap'. If the key is already
 --   present in the map, the associated value is combined with the new value as @old '<>' new@.
@@ -3096,51 +3093,48 @@ filterWithKey p (Nest m) = Nest $ Map.filterWithKey p m
 
 -- | /O(n)/. Filter all key/value pairs that satisfy the predicate.
 filterWithKey1 :: (k -> v -> Bool) -> DeepMap '[k] v -> DeepMap '[k] v
-filterWithKey1 p m =
+filterWithKey1 p =
   runIdentity
-    $ traverseMaybeWithKey1 (\k0 -> Identity . (bool (const Nothing) Just =<< p k0)) m
+    . traverseMaybeWithKey1
+      \k0 -> Identity . (bool (const Nothing) Just =<< p k0)
 
 -- | /O(n)/. Filter all key-chain/value pairs that satisfy the predicate.
 filterWithKey2 ::
   (k0 -> k1 -> v -> Bool) -> DeepMap '[k0, k1] v -> DeepMap '[k0, k1] v
-filterWithKey2 p m =
+filterWithKey2 p =
   runIdentity
-    $ traverseMaybeWithKey2
-      (\k0 k1 -> Identity . (bool (const Nothing) Just =<< p k0 k1))
-      m
+    . traverseMaybeWithKey2
+      \k0 k1 -> Identity . (bool (const Nothing) Just =<< p k0 k1)
 
 -- | /O(n)/. Filter all key-chain/value pairs that satisfy the predicate.
 filterWithKey3 ::
   (k0 -> k1 -> k2 -> v -> Bool) ->
   DeepMap '[k0, k1, k2] v ->
   DeepMap '[k0, k1, k2] v
-filterWithKey3 p m =
+filterWithKey3 p =
   runIdentity
-    $ traverseMaybeWithKey3
-      (\k0 k1 k2 -> Identity . (bool (const Nothing) Just =<< p k0 k1 k2))
-      m
+    . traverseMaybeWithKey3
+      \k0 k1 k2 -> Identity . (bool (const Nothing) Just =<< p k0 k1 k2)
 
 -- | /O(n)/. Filter all key-chain/value pairs that satisfy the predicate.
 filterWithKey4 ::
   (k0 -> k1 -> k2 -> k3 -> v -> Bool) ->
   DeepMap '[k0, k1, k2, k3] v ->
   DeepMap '[k0, k1, k2, k3] v
-filterWithKey4 p m =
+filterWithKey4 p =
   runIdentity
-    $ traverseMaybeWithKey4
-      (\k0 k1 k2 k3 -> Identity . (bool (const Nothing) Just =<< p k0 k1 k2 k3))
-      m
+    . traverseMaybeWithKey4
+      \k0 k1 k2 k3 -> Identity . (bool (const Nothing) Just =<< p k0 k1 k2 k3)
 
 -- | /O(n)/. Filter all key-chain/value pairs that satisfy the predicate.
 filterWithKey5 ::
   (k0 -> k1 -> k2 -> k3 -> k4 -> v -> Bool) ->
   DeepMap '[k0, k1, k2, k3, k4] v ->
   DeepMap '[k0, k1, k2, k3, k4] v
-filterWithKey5 p m =
+filterWithKey5 p =
   runIdentity
-    $ traverseMaybeWithKey5
-      (\k0 k1 k2 k3 k4 -> Identity . (bool (const Nothing) Just =<< p k0 k1 k2 k3 k4))
-      m
+    . traverseMaybeWithKey5
+      \k0 k1 k2 k3 k4 -> Identity . (bool (const Nothing) Just =<< p k0 k1 k2 k3 k4)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Restrict a 'Map' to only the keys in a given 'Set'.
 restrictKeys :: (Ord k) => DeepMap (k ': ks) v -> Set k -> DeepMap (k ': ks) v
@@ -3153,8 +3147,8 @@ restrictKeys2 ::
   Set (k0, k1) ->
   DeepMap (k0 ': k1 ': ks) v
 restrictKeys2 m s =
-  mapShallow (\dm -> restrictKeys dm (Set.map snd s))
-    $ restrictKeys m (Set.map fst s)
+  mapShallow (\dm -> restrictKeys dm (Set.map snd s)) $
+    restrictKeys m (Set.map fst s)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Restrict a 'Map' to only the keys in a given 'Set'.
 restrictKeys3 ::
@@ -3163,8 +3157,8 @@ restrictKeys3 ::
   Set (k0, k1, k2) ->
   DeepMap (k0 ': k1 ': k2 ': ks) v
 restrictKeys3 m s =
-  mapShallow (\dm -> restrictKeys2 dm (Set.map (\(_, b, c) -> (b, c)) s))
-    $ restrictKeys m (Set.map (\(a, _, _) -> a) s)
+  mapShallow (\dm -> restrictKeys2 dm (Set.map (\(_, b, c) -> (b, c)) s)) $
+    restrictKeys m (Set.map (\(a, _, _) -> a) s)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Restrict a 'Map' to only the keys in a given 'Set'.
 restrictKeys4 ::
@@ -3173,8 +3167,8 @@ restrictKeys4 ::
   Set (k0, k1, k2, k3) ->
   DeepMap (k0 ': k1 ': k2 ': k3 ': ks) v
 restrictKeys4 m s =
-  mapShallow (\dm -> restrictKeys3 dm (Set.map (\(_, b, c, d) -> (b, c, d)) s))
-    $ restrictKeys m (Set.map (\(a, _, _, _) -> a) s)
+  mapShallow (\dm -> restrictKeys3 dm (Set.map (\(_, b, c, d) -> (b, c, d)) s)) $
+    restrictKeys m (Set.map (\(a, _, _, _) -> a) s)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Restrict a 'Map' to only the keys in a given 'Set'.
 restrictKeys5 ::
@@ -3198,8 +3192,8 @@ withoutKeys2 ::
   Set (k0, k1) ->
   DeepMap (k0 ': k1 ': ks) v
 withoutKeys2 m s =
-  mapShallow (\dm -> withoutKeys dm (Set.map snd s))
-    $ withoutKeys m (Set.map fst s)
+  mapShallow (\dm -> withoutKeys dm (Set.map snd s)) $
+    withoutKeys m (Set.map fst s)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Remove all the keys in a 'Set' from a 'Map'.
 withoutKeys3 ::
@@ -3208,8 +3202,8 @@ withoutKeys3 ::
   Set (k0, k1, k2) ->
   DeepMap (k0 ': k1 ': k2 ': ks) v
 withoutKeys3 m s =
-  mapShallow (\dm -> withoutKeys2 dm (Set.map (\(_, b, c) -> (b, c)) s))
-    $ withoutKeys m (Set.map (\(a, _, _) -> a) s)
+  mapShallow (\dm -> withoutKeys2 dm (Set.map (\(_, b, c) -> (b, c)) s)) $
+    withoutKeys m (Set.map (\(a, _, _) -> a) s)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Remove all the keys in a 'Set' from a 'Map'.
 withoutKeys4 ::
@@ -3218,8 +3212,8 @@ withoutKeys4 ::
   Set (k0, k1, k2, k3) ->
   DeepMap (k0 ': k1 ': k2 ': k3 ': ks) v
 withoutKeys4 m s =
-  mapShallow (\dm -> withoutKeys3 dm (Set.map (\(_, b, c, d) -> (b, c, d)) s))
-    $ withoutKeys m (Set.map (\(a, _, _, _) -> a) s)
+  mapShallow (\dm -> withoutKeys3 dm (Set.map (\(_, b, c, d) -> (b, c, d)) s)) $
+    withoutKeys m (Set.map (\(a, _, _, _) -> a) s)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Remove all the keys in a 'Set' from a 'Map'.
 withoutKeys5 ::
@@ -3352,40 +3346,40 @@ mapMaybeWithKey1 f = mapShallowMaybeWithKey (\k -> fmap Bare . f k . getBare)
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybeWithKey2 ::
   (k0 -> k1 -> v -> Maybe w) -> DeepMap '[k0, k1] v -> DeepMap '[k0, k1] w
-mapMaybeWithKey2 f m =
+mapMaybeWithKey2 f =
   let g k0 k1 v = Identity $ f k0 k1 v
    in runIdentity
-        $ traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey1 . g) m
+        . traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey1 . g)
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybeWithKey3 ::
   (k0 -> k1 -> k2 -> v -> Maybe w) ->
   DeepMap '[k0, k1, k2] v ->
   DeepMap '[k0, k1, k2] w
-mapMaybeWithKey3 f m =
+mapMaybeWithKey3 f =
   let g k0 k1 k2 v = Identity $ f k0 k1 k2 v
    in runIdentity
-        $ traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey2 . g) m
+        . traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey2 . g)
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybeWithKey4 ::
   (k0 -> k1 -> k2 -> k3 -> v -> Maybe w) ->
   DeepMap '[k0, k1, k2, k3] v ->
   DeepMap '[k0, k1, k2, k3] w
-mapMaybeWithKey4 f m =
+mapMaybeWithKey4 f =
   let g k0 k1 k2 k3 v = Identity $ f k0 k1 k2 k3 v
    in runIdentity
-        $ traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey3 . g) m
+        . traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey3 . g)
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybeWithKey5 ::
   (k0 -> k1 -> k2 -> k3 -> k4 -> v -> Maybe w) ->
   DeepMap '[k0, k1, k2, k3, k4] v ->
   DeepMap '[k0, k1, k2, k3, k4] w
-mapMaybeWithKey5 f m =
+mapMaybeWithKey5 f =
   let g k0 k1 k2 k3 k4 v = Identity $ f k0 k1 k2 k3 k4 v
    in runIdentity
-        $ traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey4 . g) m
+        . traverseMaybeWithKey (fmap (fmap Just) . traverseMaybeWithKey4 . g)
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEither ::
@@ -3422,55 +3416,50 @@ mapEitherWithKey2 ::
   (k0 -> k1 -> v -> Either w x) ->
   DeepMap '[k0, k1] v ->
   (DeepMap '[k0, k1] w, DeepMap '[k0, k1] x)
-mapEitherWithKey2 f m =
+mapEitherWithKey2 f =
   (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
     . partition2 isLeft
-    $ mapShallowWithKey (\k0 -> mapShallowWithKey $ fmap . f k0) m
+    . mapShallowWithKey (\k0 -> mapShallowWithKey $ fmap . f k0)
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEitherWithKey3 ::
   (k0 -> k1 -> k2 -> v -> Either w x) ->
   DeepMap '[k0, k1, k2] v ->
   (DeepMap '[k0, k1, k2] w, DeepMap '[k0, k1, k2] x)
-mapEitherWithKey3 f m =
+mapEitherWithKey3 f =
   (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
     . partition3 isLeft
-    $ mapShallowWithKey
-      ( \k0 -> mapShallowWithKey $ \k1 ->
-          mapShallowWithKey $ fmap . f k0 k1
-      )
-      m
+    . mapShallowWithKey \k0 -> mapShallowWithKey $ \k1 ->
+      mapShallowWithKey $ fmap . f k0 k1
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEitherWithKey4 ::
   (k0 -> k1 -> k2 -> k3 -> v -> Either w x) ->
   DeepMap '[k0, k1, k2, k3] v ->
   (DeepMap '[k0, k1, k2, k3] w, DeepMap '[k0, k1, k2, k3] x)
-mapEitherWithKey4 f m =
+mapEitherWithKey4 f =
   (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
     . partition4 isLeft
-    $ mapShallowWithKey
+    . mapShallowWithKey
       ( \k0 -> mapShallowWithKey $ \k1 ->
           mapShallowWithKey $ \k2 ->
             mapShallowWithKey $ fmap . f k0 k1 k2
       )
-      m
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEitherWithKey5 ::
   (k0 -> k1 -> k2 -> k3 -> k4 -> v -> Either w x) ->
   DeepMap '[k0, k1, k2, k3, k4] v ->
   (DeepMap '[k0, k1, k2, k3, k4] w, DeepMap '[k0, k1, k2, k3, k4] x)
-mapEitherWithKey5 f m =
+mapEitherWithKey5 f =
   (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
     . partition5 isLeft
-    $ mapShallowWithKey
+    . mapShallowWithKey
       ( \k0 -> mapShallowWithKey $ \k1 ->
           mapShallowWithKey $ \k2 ->
             mapShallowWithKey $ \k3 ->
               mapShallowWithKey $ fmap . f k0 k1 k2 k3
       )
-      m
 
 -- | /O(log n)/. Partition the map by comparing keys ((smaller, larger) than given).
 split ::
@@ -3486,7 +3475,7 @@ splitLookup ::
   k ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) v, Maybe (DeepMap ks v), DeepMap (k ': ks) v)
-splitLookup k (Nest m) = (\(n, y, p) -> (Nest n, y, Nest p)) $ Map.splitLookup k m
+splitLookup k (Nest m) = Map.splitLookup k m & \(n, y, p) -> (Nest n, y, Nest p)
 
 -- | /O(1)/. Decompose a map into pieces based on the structure of the underlying tree.
 splitRoot :: DeepMap (k ': ks) v -> [DeepMap (k ': ks) v]
