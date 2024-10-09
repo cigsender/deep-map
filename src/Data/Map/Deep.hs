@@ -12,8 +12,8 @@
 module Data.Map.Deep
   ( -- * Map type
     DeepMap (..)
-  , onBare2
-  , onNest2
+  , onCore2
+  , onWrap2
 
     -- * Construction
   , empty
@@ -322,10 +322,13 @@ module Data.Map.Deep
     -- * Conversion
   , elems
   , elems1
+  , elemsDeep
   , keys
+  , keysSet
+  , keysDeep
   , assocs
   , assocs1
-  , keysSet
+  , assocsDeep
   , invertKeys
 
     -- ** Lists
@@ -429,11 +432,11 @@ module Data.Map.Deep
 
     -- * Deep
   , Deep
-  , pattern Deep1
-  , pattern Deep2
-  , pattern Deep3
-  , pattern Deep4
-  , pattern Deep5
+  , pattern D1
+  , pattern D2
+  , pattern D3
+  , pattern D4
+  , pattern D5
   )
 where
 
@@ -468,48 +471,48 @@ import Prelude hiding
   )
 
 data DeepMap (ks :: [Type]) (v :: Type) :: Type where
-  Bare :: {getBare :: v} -> DeepMap '[] v
-  Nest :: (Ord k) => {getNest :: Map k (DeepMap ks v)} -> DeepMap (k ': ks) v
+  Core :: {getCore :: v} -> DeepMap '[] v
+  Wrap :: (Ord k) => {getWrap :: Map k (DeepMap ks v)} -> DeepMap (k ': ks) v
 
 instance (Eq v) => Eq (DeepMap '[] v) where
   (==) :: (Eq v) => DeepMap '[] v -> DeepMap '[] v -> Bool
-  Bare v1 == Bare v2 = v1 == v2
+  Core v1 == Core v2 = v1 == v2
 
 instance (Eq k, Eq (DeepMap ks v)) => Eq (DeepMap (k ': ks) v) where
   (==) ::
     (Eq k, Eq (DeepMap ks v)) =>
     (DeepMap (k : ks) v -> DeepMap (k : ks) v -> Bool)
-  Nest v1 == Nest v2 = v1 == v2
+  Wrap v1 == Wrap v2 = v1 == v2
 
 instance (Ord v) => Ord (DeepMap '[] v) where
   (<=) :: (Ord v) => DeepMap '[] v -> DeepMap '[] v -> Bool
-  Bare v1 <= Bare v2 = v1 <= v2
+  Core v1 <= Core v2 = v1 <= v2
 
 instance (Ord k, Ord (DeepMap ks v)) => Ord (DeepMap (k ': ks) v) where
   (<=) ::
     (Ord k, Ord (DeepMap ks v)) => DeepMap (k : ks) v -> DeepMap (k : ks) v -> Bool
-  Nest v1 <= Nest v2 = v1 <= v2
+  Wrap v1 <= Wrap v2 = v1 <= v2
 
 instance (Show v) => Show (DeepMap '[] v) where
-  show (Bare v) = "Bare " <> show v
+  show (Core v) = "Core " <> show v
 
 instance (Show k, Show (DeepMap ks v)) => Show (DeepMap (k ': ks) v) where
-  show (Nest v) = "Nest {" <> show v <> "}"
+  show (Wrap v) = "Wrap {" <> show v <> "}"
 
 instance (Semigroup v) => Semigroup (DeepMap '[] v) where
-  (<>) = onBare2 (<>)
+  (<>) = onCore2 (<>)
 
 instance
   (Ord k, Semigroup (DeepMap ks v)) =>
   Semigroup (DeepMap (k ': ks) v)
   where
-  (<>) = onNest2 $ Map.unionWith (<>)
+  (<>) = onWrap2 $ Map.unionWith (<>)
 
 instance (Monoid v) => Monoid (DeepMap '[] v) where
-  mempty = Bare mempty
+  mempty = Core mempty
 
 instance (Ord k, Semigroup (DeepMap ks v)) => Monoid (DeepMap (k ': ks) v) where
-  mempty = Nest mempty
+  mempty = Wrap mempty
 
 deriving instance Functor (DeepMap ks)
 
@@ -520,8 +523,8 @@ deriving instance Traversable (DeepMap ks)
 -- | For use with indexed maps, folds, and traversals.
 type Deep :: [Type] -> Type
 data Deep ks where
-  Deep0 :: Deep '[]
-  Deep1 :: (Ord k) => k -> Deep ks -> Deep (k ': ks)
+  D0 :: Deep '[]
+  D1 :: (Ord k) => k -> Deep ks -> Deep (k ': ks)
 
 deriving instance Eq (Deep '[])
 
@@ -533,28 +536,30 @@ deriving instance (Eq k, Eq (Deep ks)) => Eq (Deep (k ': ks))
 
 deriving instance (Ord k, Ord (Deep ks)) => Ord (Deep (k ': ks))
 
-pattern Deep2 ::
+deriving instance (Show k, Show (Deep ks)) => Show (Deep (k ': ks))
+
+pattern D2 ::
   (Ord k0, Ord k1) =>
   (k0 -> k1 -> Deep ks -> Deep (k0 ': k1 ': ks))
-pattern Deep2 k0 k1 ks = Deep1 k0 (Deep1 k1 ks)
+pattern D2 k0 k1 ks = D1 k0 (D1 k1 ks)
 
-{-# COMPLETE Deep2 #-}
+{-# COMPLETE D2 #-}
 
-pattern Deep3 ::
+pattern D3 ::
   (Ord k0, Ord k1, Ord k2) =>
   (k0 -> k1 -> k2 -> Deep ks -> Deep (k0 ': k1 ': k2 ': ks))
-pattern Deep3 k0 k1 k2 ks = Deep1 k0 (Deep2 k1 k2 ks)
+pattern D3 k0 k1 k2 ks = D1 k0 (D2 k1 k2 ks)
 
-{-# COMPLETE Deep3 #-}
+{-# COMPLETE D3 #-}
 
-pattern Deep4 ::
+pattern D4 ::
   (Ord k0, Ord k1, Ord k2, Ord k3) =>
   (k0 -> k1 -> k2 -> k3 -> Deep ks -> Deep (k0 ': k1 ': k2 ': k3 ': ks))
-pattern Deep4 k0 k1 k2 k3 ks = Deep1 k0 (Deep3 k1 k2 k3 ks)
+pattern D4 k0 k1 k2 k3 ks = D1 k0 (D3 k1 k2 k3 ks)
 
-{-# COMPLETE Deep4 #-}
+{-# COMPLETE D4 #-}
 
-pattern Deep5 ::
+pattern D5 ::
   (Ord k0, Ord k1, Ord k2, Ord k3, Ord k4) =>
   k0 ->
   k1 ->
@@ -562,9 +567,9 @@ pattern Deep5 ::
   k3 ->
   k4 ->
   (Deep ks -> Deep (k0 ': k1 ': k2 ': k3 ': k4 ': ks))
-pattern Deep5 k0 k1 k2 k3 k4 ks = Deep1 k0 (Deep4 k1 k2 k3 k4 ks)
+pattern D5 k0 k1 k2 k3 k4 ks = D1 k0 (D4 k1 k2 k3 k4 ks)
 
-{-# COMPLETE Deep5 #-}
+{-# COMPLETE D5 #-}
 
 instance FunctorWithIndex (Deep ks) (DeepMap ks)
 
@@ -575,8 +580,8 @@ instance (TraversableWithIndex (Deep ks) (DeepMap ks)) where
     (Applicative f) =>
     ((Deep ks -> a -> f b) -> DeepMap ks a -> f (DeepMap ks b))
   itraverse f = \case
-    Bare v -> Bare <$> f Deep0 v
-    Nest m -> Nest <$> itraverse (itraverse . (f .) . Deep1) m
+    Core v -> Core <$> f D0 v
+    Wrap m -> Wrap <$> itraverse (itraverse . (f .) . D1) m
 
 deriving instance (Typeable v) => Typeable (DeepMap '[] v)
 
@@ -584,24 +589,24 @@ deriving instance
   (Typeable k, Typeable (DeepMap ks v)) => Typeable (DeepMap (k ': ks) v)
 
 tyDeepMap :: DataType
-tyDeepMap = mkDataType "Data.Map.Monoidal.Deep.DeepMap" [conBare, conNest]
+tyDeepMap = mkDataType "Data.Map.Monoidal.Deep.DeepMap" [conCore, conWrap]
 
-conBare, conNest :: Constr
-conBare = mkConstr tyDeepMap "Bare" [] Data.Data.Prefix
-conNest = mkConstr tyDeepMap "Nest" [] Data.Data.Prefix
+conCore, conWrap :: Constr
+conCore = mkConstr tyDeepMap "Core" [] Data.Data.Prefix
+conWrap = mkConstr tyDeepMap "Wrap" [] Data.Data.Prefix
 
 instance (Data v) => Data (DeepMap '[] v) where
   dataTypeOf :: (Data v) => DeepMap '[] v -> DataType
   dataTypeOf _ = tyDeepMap
   toConstr :: (Data v) => DeepMap '[] v -> Constr
-  toConstr (Bare _) = conBare
+  toConstr (Core _) = conCore
   gunfold ::
     (Data v) =>
     (forall b r. (Data b) => c (b -> r) -> c r) ->
     (forall r. r -> c r) ->
     Constr ->
     c (DeepMap '[] v)
-  gunfold k z _ = k (z Bare)
+  gunfold k z _ = k (z Core)
 
 instance
   ( Ord k
@@ -629,7 +634,7 @@ instance
     , Data (DeepMap ks v)
     ) =>
     (DeepMap (k : ks) v -> Constr)
-  toConstr (Nest _) = conNest
+  toConstr (Wrap _) = conWrap
   gunfold ::
     ( Ord k
     , Data k
@@ -641,14 +646,14 @@ instance
     (forall r. r -> c r) ->
     Constr ->
     c (DeepMap (k : ks) v)
-  gunfold k z _ = k (z Nest)
+  gunfold k z _ = k (z Wrap)
 
 instance (Generic v) => Generic (DeepMap '[] v) where
   type Rep (DeepMap '[] v) = Const v
   from :: (Generic v) => DeepMap '[] v -> Const v x
-  from (Bare v) = Const v
+  from (Core v) = Const v
   to :: (Generic v) => Const v x -> DeepMap '[] v
-  to (Const v) = Bare v
+  to (Const v) = Core v
 
 instance
   (Ord k, Generic k, Generic (DeepMap ks v)) =>
@@ -662,93 +667,105 @@ instance
   to ::
     (Ord k, Generic k, Generic (DeepMap ks v)) =>
     (Rep (DeepMap (k : ks) v) x -> DeepMap (k : ks) v)
-  to (Compose kvs) = Nest . Map.fromList $ kvs <&> \(Const k :*: dm') -> (k, to dm')
+  to (Compose kvs) = Wrap . Map.fromList $ kvs <&> \(Const k :*: dm') -> (k, to dm')
 
 -- | Apply a two-argument function through a shallow 'DeepMap', akin to 'liftA2'.
-onBare2 :: (v -> w -> x) -> DeepMap '[] v -> DeepMap '[] w -> DeepMap '[] x
-onBare2 f (Bare v) (Bare w) = Bare $ f v w
+onCore2 :: (v -> w -> x) -> DeepMap '[] v -> DeepMap '[] w -> DeepMap '[] x
+onCore2 f (Core v) (Core w) = Core $ f v w
 
 -- | Apply a two-argument function through a shallow 'DeepMap', akin to 'liftA2'.
-onBare2F ::
+onCore2F ::
   (Functor f) =>
   (v -> w -> f x) ->
   DeepMap '[] v ->
   DeepMap '[] w ->
   f (DeepMap '[] x)
-onBare2F f (Bare v) (Bare w) = Bare <$> f v w
+onCore2F f (Core v) (Core w) = Core <$> f v w
 
 -- | Apply a two-argument 'Map' function through a deep 'DeepMap', akin to 'liftA2'.
-onNest2 ::
+onWrap2 ::
   (Map k (DeepMap ks v) -> Map k (DeepMap ls w) -> Map k (DeepMap ms x)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w ->
   DeepMap (k ': ms) x
-onNest2 f (Nest v) (Nest w) = Nest $ f v w
+onWrap2 f (Wrap v) (Wrap w) = Wrap $ f v w
 
 -- | Half of the isomorphism of a depth-1 'DeepMap' to a 'Data.Map.Strict.Map'. See also 'fromMap'.
-toMap :: DeepMap (k ': '[]) v -> Map k v
-toMap (Nest m) = getBare <$> m
+toMap :: DeepMap '[k] v -> Map k v
+toMap (Wrap m) = getCore <$> m
 
 -- | Half of the isomorphism of a depth-1 'DeepMap' to a 'Data.Map.Strict.Map'. See also 'toMap'.
 fromMap :: (Ord k) => Map k v -> DeepMap '[k] v
-fromMap m = Nest (Bare <$> m)
+fromMap m = Wrap (Core <$> m)
 
 -- | A singleton 'DeepMap'. Use with '(@|)' to create deep nestings:
 --
 -- >>> "Outer" @> 0 @| [5]
--- Nest {fromList [("Outer",Nest {fromList [(0,Bare [5])]})]}
+-- Wrap {fromList [("Outer",Wrap {fromList [(0,Core [5])]})]}
 infixr 6 @>
 
 (@>) :: (Ord k) => k -> DeepMap ks v -> DeepMap (k ': ks) v
-k @> a = Nest $ Map.singleton k a
+k @> a = Wrap $ Map.singleton k a
 {-# INLINE (@>) #-}
 
 -- | Infix synonym for 'singleton'. Use with '(@>)' to create deep nestings:
 --
 -- >>> "Outer" @> 0 @| [5]
--- Nest {fromList [("Outer",Nest {fromList [(0,Bare [5])]})]}
+-- Wrap {fromList [("Outer",Wrap {fromList [(0,Core [5])]})]}
 infixr 6 @|
 
 (@|) :: (Ord k) => k -> v -> DeepMap '[k] v
-k @| a = Nest . Map.singleton k $ Bare a
+k @| a = Wrap $ Map.singleton k (Core a)
 {-# INLINE (@|) #-}
 
 deep :: Deep ks -> v -> DeepMap ks v
 deep js v = case js of
-  Deep0 -> Bare v
-  Deep1 k ks -> k @> deep ks v
+  D0 -> Core v
+  D1 k ks -> k @> deep ks v
 
 -- | /O(1)/. The empty, arbitrary positive-depth 'DeepMap'.
 empty :: (Ord k) => DeepMap (k ': ks) v
-empty = Nest Map.empty
+empty = Wrap Map.empty
 
 -- | /O(1)/. A depth-1 'DeepMap' with a single key/value pair.
 singleton :: (Ord k) => k -> v -> DeepMap '[k] v
-singleton k v = Nest . Map.singleton k $ Bare v
+singleton k v = Wrap $ Map.singleton k (Core v)
 
 -- | /O(n)/. Return all submaps of the map in ascending order of its keys. Subject to list fusion.
 elems :: DeepMap (k ': ks) v -> [DeepMap ks v]
-elems (Nest m) = Map.elems m
+elems (Wrap m) = Map.elems m
+
+-- | /O(n)/. Return all values of the 'DeepMap' at distinct key chains.
+elemsDeep :: DeepMap ks v -> [v]
+elemsDeep = fmap snd . assocsDeep
 
 -- | /O(n)/. Return all values of the singly-nested map in ascending order of its keys. Subject to list fusion.
 elems1 :: DeepMap '[k] v -> [v]
-elems1 m = getBare <$> elems m
+elems1 m = getCore <$> elems m
 
 -- | /O(n)/. Return all keys of the map in ascending order. Subject to list fusion.
 keys :: DeepMap (k ': ks) v -> [k]
-keys (Nest m) = Map.keys m
+keys (Wrap m) = Map.keys m
+
+-- | /O(n)/. Return all distinct key chains of the 'DeepMap'.
+keysDeep :: DeepMap ks v -> [Deep ks]
+keysDeep = fmap fst . assocsDeep
 
 -- | /O(n)/. Return all pairs of the map in ascending key order. Subject to list fusion.
 assocs :: DeepMap (k ': ks) v -> [(k, DeepMap ks v)]
-assocs (Nest m) = Map.assocs m
+assocs (Wrap m) = Map.assocs m
+
+-- | /O(n)/. Return all keychain-value pairs of the 'DeepMap'.
+assocsDeep :: DeepMap ks v -> [(Deep ks, v)]
+assocsDeep = ifoldMap ((pure .) . (,))
 
 -- | /O(n)/. Return all pairs of the singly-nested map in ascending key order. Subject to list fusion.
 assocs1 :: DeepMap '[k] v -> [(k, v)]
-assocs1 dm = fmap getBare <$> assocs dm
+assocs1 dm = fmap getCore <$> assocs dm
 
 -- | /O(n)/. The set of all keys of the map.
 keysSet :: DeepMap (k ': ks) v -> Set k
-keysSet (Nest m) = Map.keysSet m
+keysSet (Wrap m) = Map.keysSet m
 
 -- | /O(n log n)/. Build a deeper 'DeepMap' from a list of key/'DeepMap' pairs.
 --   If the list contains more than one value for the same key,
@@ -756,7 +773,7 @@ keysSet (Nest m) = Map.keysSet m
 fromList ::
   (Ord k, Semigroup (DeepMap ks v)) =>
   ([(k, DeepMap ks v)] -> DeepMap (k ': ks) v)
-fromList kvs = Nest $ Map.fromListWith (flip (<>)) kvs
+fromList kvs = Wrap $ Map.fromListWith (flip (<>)) kvs
 
 fromListDeep ::
   (Monoid (DeepMap ks v)) =>
@@ -810,12 +827,12 @@ fromListWith ::
   (DeepMap ks v -> DeepMap ks v -> DeepMap ks v) ->
   [(k, DeepMap ks v)] ->
   DeepMap (k ': ks) v
-fromListWith f kvs = Nest $ Map.fromListWith f kvs
+fromListWith f kvs = Wrap $ Map.fromListWith f kvs
 
 -- | /O(n log n)/. Build a depth-1 'DeepMap' from a list of key/value pairs
 --   using the provided combining function.
 fromListWith1 :: (Ord k) => (v -> v -> v) -> [(k, v)] -> DeepMap '[k] v
-fromListWith1 f kvs = Nest $ Bare <$> Map.fromListWith f kvs
+fromListWith1 f kvs = Wrap $ Core <$> Map.fromListWith f kvs
 
 -- | /O(n log n)/. Build a deeper 'DeepMap' from a list of key/'DeepMap' pairs with a combining function.
 fromListWithKey ::
@@ -823,11 +840,11 @@ fromListWithKey ::
   (k -> DeepMap ks v -> DeepMap ks v -> DeepMap ks v) ->
   [(k, DeepMap ks v)] ->
   DeepMap (k ': ks) v
-fromListWithKey f kvs = Nest $ Map.fromListWithKey f kvs
+fromListWithKey f kvs = Wrap $ Map.fromListWithKey f kvs
 
 -- | /O(n log n)/. Build a depth-1 'DeepMap' from a list of key/value pairs with a combining function.
 fromListWithKey1 :: (Ord k) => (k -> v -> v -> v) -> [(k, v)] -> DeepMap '[k] v
-fromListWithKey1 f kvs = Nest $ Bare <$> Map.fromListWithKey f kvs
+fromListWithKey1 f kvs = Wrap $ Core <$> Map.fromListWithKey f kvs
 
 -- | /O(n log n)/. Build a depth-2 'DeepMap' from a list of keys and values with a combining function.
 fromListWithKey2 ::
@@ -879,7 +896,7 @@ insert ::
   DeepMap ks v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-insert k dm (Nest m) = Nest $ Map.insertWith (flip (<>)) k dm m
+insert k dm (Wrap m) = Wrap $ Map.insertWith (flip (<>)) k dm m
 
 insertDeep ::
   (Ord k, Semigroup (DeepMap ks v)) =>
@@ -887,7 +904,7 @@ insertDeep ::
   v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-insertDeep (Deep1 k0 ks) = insert k0 . deep ks
+insertDeep (D1 k0 ks) = insert k0 . deep ks
 
 -- | /O(log n)/. Insert a new key and value into a depth-1 'DeepMap'. If the key is already
 --   present in the map, the associated value is combined with the new value as @old '<>' new@.
@@ -958,7 +975,7 @@ insert5 k0 k1 k2 k3 k4 v m = m <> k0 @> k1 @> k2 @> k3 @> k4 @| v
 --   present in the map, the associated value is replaced by the new value.
 overwrite ::
   (Ord k) => k -> DeepMap ks v -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-overwrite k v (Nest m) = Nest $ Map.insert k v m
+overwrite k v (Wrap m) = Wrap $ Map.insert k v m
 
 overwriteDeep ::
   (Ord k, Semigroup (DeepMap ks v)) =>
@@ -966,18 +983,18 @@ overwriteDeep ::
   v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-overwriteDeep (Deep1 k0 ks) = overwrite k0 . deep ks
+overwriteDeep (D1 k0 ks) = overwrite k0 . deep ks
 
 -- | /O(log n)/. Insert a new key/value pair into a depth-1 'DeepMap'. If the key is already
 --   present in the map, the associated value is replaced by the new value.
 overwrite1 :: (Ord k) => k -> v -> DeepMap '[k] v -> DeepMap '[k] v
-overwrite1 k v = overwrite k (Bare v)
+overwrite1 k v = overwrite k (Core v)
 
 -- | /O(log n)/. Insert a new key-chain/value pair into a depth-2 'DeepMap'. If the key is already
 --   present in the map, the associated value is replaced by the new value.
 overwrite2 ::
   (Ord k0, Ord k1) => k0 -> k1 -> v -> DeepMap '[k0, k1] v -> DeepMap '[k0, k1] v
-overwrite2 k0 k1 v m = overwrite k0 (overwrite k1 (Bare v) . fromMaybe empty $ m @? k0) m
+overwrite2 k0 k1 v m = overwrite k0 (overwrite k1 (Core v) . fromMaybe empty $ m @? k0) m
 
 -- | /O(log n)/. Insert a new key-chain/value pair into a depth-3 'DeepMap'. If the key is already
 --   present in the map, the associated value is replaced by the new value.
@@ -1026,7 +1043,7 @@ overwriteLookup ::
   DeepMap ks v ->
   DeepMap (k ': ks) v ->
   (Maybe (DeepMap ks v), DeepMap (k ': ks) v)
-overwriteLookup k v (Nest m) = Nest <$> Map.insertLookupWithKey (const const) k v m
+overwriteLookup k v (Wrap m) = Wrap <$> Map.insertLookupWithKey (const const) k v m
 
 overwriteLookupDeep ::
   (Ord k, Semigroup (DeepMap ks v)) =>
@@ -1034,7 +1051,7 @@ overwriteLookupDeep ::
   v ->
   DeepMap (k ': ks) v ->
   (Maybe (DeepMap ks v), DeepMap (k ': ks) v)
-overwriteLookupDeep (Deep1 k0 ks) = overwriteLookup k0 . deep ks
+overwriteLookupDeep (D1 k0 ks) = overwriteLookup k0 . deep ks
 
 -- | /O(log n)/. Combines replacement and retrieval at depth 1.
 overwriteLookup1 ::
@@ -1099,7 +1116,7 @@ insertWith ::
   DeepMap ks v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-insertWith f k v (Nest m) = Nest $ Map.insertWith f k v m
+insertWith f k v (Wrap m) = Wrap $ Map.insertWith f k v m
 
 -- | /O(log n)/. Insert with a function, combining new value and old value
 --   using the supplied function.
@@ -1108,7 +1125,7 @@ insertWith f k v (Nest m) = Nest $ Map.insertWith f k v m
 --   or overwrite with @old ~~ new@ if there was already a value @old@ at @k@.
 insertWith1 ::
   (Ord k) => (v -> v -> v) -> k -> v -> DeepMap '[k] v -> DeepMap '[k] v
-insertWith1 f k v = insertWith (onBare2 f) k (Bare v)
+insertWith1 f k v = insertWith (onCore2 f) k (Core v)
 
 -- | /O(log n)/. Insert with a function, combining new value and old value
 --   using the supplied function.
@@ -1185,13 +1202,13 @@ insertWithKey ::
   DeepMap ks v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-insertWithKey f k v (Nest m) = Nest $ Map.insertWithKey f k v m
+insertWithKey f k v (Wrap m) = Wrap $ Map.insertWithKey f k v m
 
 -- | /O(log n)/. Insert with a function, combining new value and old value
 --   using the supplied function with access to the given keys.
 insertWithKey1 ::
   (Ord k) => (k -> v -> v -> v) -> k -> v -> DeepMap '[k] v -> DeepMap '[k] v
-insertWithKey1 f k v = insertWithKey (onBare2 . f) k (Bare v)
+insertWithKey1 f k v = insertWithKey (onCore2 . f) k (Core v)
 
 -- | /O(log n)/. Insert with a function, combining new value and old value
 --   using the supplied function with access to the given keys.
@@ -1265,7 +1282,7 @@ insertLookupWithKey ::
   DeepMap ks v ->
   DeepMap (k ': ks) v ->
   (Maybe (DeepMap ks v), DeepMap (k ': ks) v)
-insertLookupWithKey f k v (Nest m) = Nest <$> Map.insertLookupWithKey f k v m
+insertLookupWithKey f k v (Wrap m) = Wrap <$> Map.insertLookupWithKey f k v m
 
 -- | /O(log n)/. Combines insertion and retrieval.
 insertLookupWithKey1 ::
@@ -1329,7 +1346,7 @@ insertLookupWithKey5 f k0 k1 k2 k3 k4 v m = (m @? k0 @?? k1 @?? k2 @?? k3 @??| k
 
 -- | /O(log n)/. Delete a key and its value from the map, or do nothing if the key is missing.
 delete :: (Ord k) => k -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-delete k (Nest m) = Nest $ Map.delete k m
+delete k (Wrap m) = Wrap $ Map.delete k m
 
 deleteDeep ::
   (Monoid v) =>
@@ -1337,8 +1354,8 @@ deleteDeep ::
   DeepMap ks v ->
   DeepMap ks v
 deleteDeep = \cases
-  Deep0 _ -> mempty
-  (Deep1 k ks) m -> case m @? k of
+  D0 _ -> mempty
+  (D1 k ks) m -> case m @? k of
     Nothing -> m
     Just dm -> overwrite k (deleteDeep ks dm) m
 
@@ -1400,12 +1417,12 @@ adjust ::
   k ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-adjust f k (Nest m) = Nest $ Map.adjust f k m
+adjust f k (Wrap m) = Wrap $ Map.adjust f k m
 
 adjustDeep :: (v -> v) -> Deep ks -> DeepMap ks v -> DeepMap ks v
 adjustDeep f = \cases
-  Deep0 (Bare v) -> Bare (f v)
-  (Deep1 k ks) (Nest m) -> Nest $ Map.adjust (adjustDeep f ks) k m
+  D0 (Core v) -> Core (f v)
+  (D1 k ks) (Wrap m) -> Wrap $ Map.adjust (adjustDeep f ks) k m
 
 -- | /O(log n)/. Change a value at a specific key with the result of the provided function,
 --   or do nothing if the key is missing.
@@ -1478,7 +1495,7 @@ adjustWithKey ::
   k ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-adjustWithKey f k (Nest m) = Nest $ Map.adjustWithKey f k m
+adjustWithKey f k (Wrap m) = Wrap $ Map.adjustWithKey f k m
 
 -- | /O(log n)/. Change a value at a specific key with access to the key itself,
 --   or do nothing if the key is missing.
@@ -1552,7 +1569,7 @@ update ::
   k ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-update f k (Nest m) = Nest $ Map.update f k m
+update f k (Wrap m) = Wrap $ Map.update f k m
 
 updateDeep ::
   (Monoid v) =>
@@ -1561,8 +1578,8 @@ updateDeep ::
   DeepMap ks v ->
   DeepMap ks v
 updateDeep f = \cases
-  Deep0 (Bare v) -> maybe mempty Bare (f v)
-  (Deep1 k ks) (Nest m) -> Nest $ Map.adjust (updateDeep f ks) k m
+  D0 (Core v) -> maybe mempty Core (f v)
+  (D1 k ks) (Wrap m) -> Wrap $ Map.adjust (updateDeep f ks) k m
 
 -- | /O(log n)/. Change a 'DeepMap' at a specific key. If the function evaluates to 'Nothing',
 --   the key and submap are removed. If the key is missing, do nothing.
@@ -1636,7 +1653,7 @@ updateWithKey ::
   k ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-updateWithKey f k (Nest m) = Nest $ Map.updateWithKey f k m
+updateWithKey f k (Wrap m) = Wrap $ Map.updateWithKey f k m
 
 -- | /O(log n)/. Change a value at a specific key with access to the key itself.
 --   If the function evaluates to 'Nothing', the key and value are removed.
@@ -1716,7 +1733,7 @@ updateLookupWithKey ::
   k ->
   DeepMap (k ': ks) v ->
   (Maybe (DeepMap ks v), DeepMap (k ': ks) v)
-updateLookupWithKey f k (Nest m) = Nest <$> Map.updateLookupWithKey f k m
+updateLookupWithKey f k (Wrap m) = Wrap <$> Map.updateLookupWithKey f k m
 
 -- | /O(log n)/. Combines change and retrieval.
 updateLookupWithKey1 ::
@@ -1780,7 +1797,7 @@ alter ::
   k ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-alter f k (Nest m) = Nest $ Map.alter f k m
+alter f k (Wrap m) = Wrap $ Map.alter f k m
 
 alterDeep ::
   (Monoid v) =>
@@ -1789,13 +1806,13 @@ alterDeep ::
   DeepMap ks v ->
   DeepMap ks v
 alterDeep f = \cases
-  Deep0 (Bare v) -> maybe mempty Bare (f (Just v))
-  (Deep1 k ks) (Nest m) -> Nest $ Map.adjust (alterDeep f ks) k m
+  D0 (Core v) -> maybe mempty Core (f (Just v))
+  (D1 k ks) (Wrap m) -> Wrap $ Map.adjust (alterDeep f ks) k m
 
 -- | /O(log n)/. Can be used to 'insert', 'overwrite', 'delete', or 'update' a value.
 alter1 ::
   (Ord k) => (Maybe v -> Maybe v) -> k -> DeepMap '[k] v -> DeepMap '[k] v
-alter1 f = alter (fmap Bare . f . fmap getBare)
+alter1 f = alter (fmap Core . f . fmap getCore)
 
 -- | /O(log n)/. Can be used to 'insert', 'overwrite', 'delete', or 'update' a value.
 alter2 ::
@@ -1857,7 +1874,7 @@ alterF ::
   k ->
   DeepMap (k ': ks) v ->
   f (DeepMap (k ': ks) v)
-alterF f k (Nest m) = Nest <$> Map.alterF f k m
+alterF f k (Wrap m) = Wrap <$> Map.alterF f k m
 
 alterFDeep ::
   (Monoid v, Applicative f) =>
@@ -1866,8 +1883,8 @@ alterFDeep ::
   DeepMap ks v ->
   f (DeepMap ks v)
 alterFDeep f = \cases
-  Deep0 (Bare v) -> maybe mempty Bare <$> f (Just v)
-  (Deep1 k ks) (Nest m) -> Nest <$> Map.alterF (traverse (alterFDeep f ks)) k m
+  D0 (Core v) -> maybe mempty Core <$> f (Just v)
+  (D1 k ks) (Wrap m) -> Wrap <$> Map.alterF (traverse (alterFDeep f ks)) k m
 
 alterF1 ::
   (Functor f, Ord k) =>
@@ -1875,7 +1892,7 @@ alterF1 ::
   k ->
   DeepMap '[k] v ->
   f (DeepMap '[k] v)
-alterF1 f = alterF (fmap (fmap Bare) . f . fmap getBare)
+alterF1 f = alterF (fmap (fmap Core) . f . fmap getCore)
 
 alterF2 ::
   (Functor f, Ord k0, Ord k1) =>
@@ -1933,16 +1950,16 @@ alterF5 f k0 k1 k2 k3 k4 m =
 
 -- | /O(log n)/. Lookup the value at a key.
 lookup :: (Ord k) => k -> DeepMap (k ': ks) v -> Maybe (DeepMap ks v)
-lookup k (Nest m) = Map.lookup k m
+lookup k (Wrap m) = Map.lookup k m
 
 lookupDeep :: Deep ks -> DeepMap ks v -> Maybe v
 lookupDeep = \cases
-  Deep0 (Bare v) -> pure v
-  (Deep1 k ks) m -> lookupDeep ks =<< m @? k
+  D0 (Core v) -> pure v
+  (D1 k ks) m -> lookupDeep ks =<< m @? k
 
 -- | /O(log n)/. Lookup the value at a key.
 lookup1 :: (Ord k) => k -> DeepMap '[k] v -> Maybe v
-lookup1 k (Nest m) = getBare <$> Map.lookup k m
+lookup1 k (Wrap m) = getCore <$> Map.lookup k m
 
 -- | /O(log n)/. A flipped, infix variant of 'lookup'.
 (@?) :: (Ord k) => DeepMap (k ': ks) v -> k -> Maybe (DeepMap ks v)
@@ -2019,35 +2036,35 @@ findWithDefault5 a k0 k1 k2 k3 k4 m = fromMaybe a $ m @? k0 @?? k1 @?? k2 @?? k3
 
 -- | /O(log n)/. Is the key a member of the map? See also 'notMember'.
 member :: (Ord k) => k -> DeepMap (k ': ks) v -> Bool
-member k (Nest m) = Map.member k m
+member k (Wrap m) = Map.member k m
 
 -- | /O(log n)/. Is the key missing from the map? See also 'member'.
 notMember :: (Ord k) => k -> DeepMap (k ': ks) v -> Bool
-notMember k (Nest m) = Map.notMember k m
+notMember k (Wrap m) = Map.notMember k m
 
 -- | Find the next smallest key to the given one, and return its key/value pair.
 lookupLT :: (Ord k) => k -> DeepMap (k ': ks) v -> Maybe (k, DeepMap ks v)
-lookupLT k (Nest m) = Map.lookupLT k m
+lookupLT k (Wrap m) = Map.lookupLT k m
 
 -- | Find the next largest key to the given one, and return its key/value pair.
 lookupGT :: (Ord k) => k -> DeepMap (k ': ks) v -> Maybe (k, DeepMap ks v)
-lookupGT k (Nest m) = Map.lookupGT k m
+lookupGT k (Wrap m) = Map.lookupGT k m
 
 -- | Find the largest key up to the given one, and return its key/value pair.
 lookupLE :: (Ord k) => k -> DeepMap (k ': ks) v -> Maybe (k, DeepMap ks v)
-lookupLE k (Nest m) = Map.lookupLE k m
+lookupLE k (Wrap m) = Map.lookupLE k m
 
 -- | Find the smallest key down to the given one, and return its key/value pair.
 lookupGE :: (Ord k) => k -> DeepMap (k ': ks) v -> Maybe (k, DeepMap ks v)
-lookupGE k (Nest m) = Map.lookupGE k m
+lookupGE k (Wrap m) = Map.lookupGE k m
 
 -- | /O(1)/. Is the 'DeepMap' empty?
 null :: DeepMap (k ': ks) v -> Bool
-null (Nest m) = Map.null m
+null (Wrap m) = Map.null m
 
 -- | /O(1)/. The number of outermost keys in the 'DeepMap'.
 size :: DeepMap (k ': ks) v -> Int
-size (Nest m) = Map.size m
+size (Wrap m) = Map.size m
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Join two 'DeepMap's together using '(<>)' to combine
 --   the values of duplicate keys.
@@ -2067,12 +2084,12 @@ unionWith ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-unionWith f = onNest2 (Map.unionWith f)
+unionWith f = onWrap2 (Map.unionWith f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Join two 'DeepMap's with a combining function.
 unionWith1 ::
   (Ord k) => (v -> v -> v) -> DeepMap '[k] v -> DeepMap '[k] v -> DeepMap '[k] v
-unionWith1 f = onNest2 (Map.unionWith (onBare2 f))
+unionWith1 f = onWrap2 (Map.unionWith (onCore2 f))
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Join two 'DeepMap's with a combining function.
 unionWith2 ::
@@ -2117,7 +2134,7 @@ unionWithKey ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-unionWithKey f = onNest2 (Map.unionWithKey f)
+unionWithKey f = onWrap2 (Map.unionWithKey f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Join two 'DeepMap's with a combining function with access to the keys.
 unionWithKey1 ::
@@ -2126,7 +2143,7 @@ unionWithKey1 ::
   DeepMap '[k] v ->
   DeepMap '[k] v ->
   DeepMap '[k] v
-unionWithKey1 f = onNest2 (Map.unionWithKey $ onBare2 . f)
+unionWithKey1 f = onWrap2 (Map.unionWithKey $ onCore2 . f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Join two 'DeepMap's with a combining function with access to the keys.
 unionWithKey2 ::
@@ -2188,7 +2205,7 @@ unionsWith1 f = foldl (unionWith1 f) empty
 --   keeping the values of the left-hand map.
 difference ::
   (Ord k) => DeepMap (k ': ks) v -> DeepMap (k ': ls) w -> DeepMap (k ': ks) v
-difference = onNest2 Map.difference
+difference = onWrap2 Map.difference
 
 -- | Infix synonym for 'difference'.
 (\\) ::
@@ -2202,7 +2219,7 @@ differenceWith ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w ->
   DeepMap (k ': ks) v
-differenceWith f = onNest2 (Map.differenceWith f)
+differenceWith f = onWrap2 (Map.differenceWith f)
 
 -- | /O(n + m)/. Difference with a combining function. Deletes keys if the value is 'Nothing'.
 differenceWith1 ::
@@ -2211,7 +2228,7 @@ differenceWith1 ::
   DeepMap '[k] v ->
   DeepMap '[k] w ->
   DeepMap '[k] v
-differenceWith1 f = onNest2 (Map.differenceWith $ onBare2F f)
+differenceWith1 f = onWrap2 (Map.differenceWith $ onCore2F f)
 
 -- | /O(n + m)/. Difference with a combining function. Deletes keys if the value is 'Nothing'.
 differenceWithKey ::
@@ -2220,7 +2237,7 @@ differenceWithKey ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w ->
   DeepMap (k ': ks) v
-differenceWithKey f = onNest2 (Map.differenceWithKey f)
+differenceWithKey f = onWrap2 (Map.differenceWithKey f)
 
 -- | /O(n + m)/. Difference with a combining function. Deletes keys if the value is 'Nothing'.
 differenceWithKey1 ::
@@ -2229,13 +2246,13 @@ differenceWithKey1 ::
   DeepMap '[k] v ->
   DeepMap '[k] w ->
   DeepMap '[k] v
-differenceWithKey1 f = onNest2 (Map.differenceWithKey $ onBare2F . f)
+differenceWithKey1 f = onWrap2 (Map.differenceWithKey $ onCore2F . f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. The set-intersection of the keys in a map,
 --   keeping the values of the left-hand map.
 intersection ::
   (Ord k) => DeepMap (k ': ks) v -> DeepMap (k ': ls) w -> DeepMap (k ': ks) v
-intersection = onNest2 Map.intersection
+intersection = onWrap2 Map.intersection
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Intersection with a combining function.
 intersectionWith ::
@@ -2244,12 +2261,12 @@ intersectionWith ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w ->
   DeepMap (k ': ms) x
-intersectionWith f = onNest2 (Map.intersectionWith f)
+intersectionWith f = onWrap2 (Map.intersectionWith f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Intersection with a combining function.
 intersectionWith1 ::
   (Ord k) => (v -> w -> x) -> DeepMap '[k] v -> DeepMap '[k] w -> DeepMap '[k] x
-intersectionWith1 f = onNest2 (Map.intersectionWith $ onBare2 f)
+intersectionWith1 f = onWrap2 (Map.intersectionWith $ onCore2 f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Intersection with a combining function.
 intersectionWithKey ::
@@ -2258,7 +2275,7 @@ intersectionWithKey ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w ->
   DeepMap (k ': ms) x
-intersectionWithKey f = onNest2 (Map.intersectionWithKey f)
+intersectionWithKey f = onWrap2 (Map.intersectionWithKey f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Intersection with a combining function.
 intersectionWithKey1 ::
@@ -2267,7 +2284,7 @@ intersectionWithKey1 ::
   DeepMap '[k] v ->
   DeepMap '[k] w ->
   DeepMap '[k] x
-intersectionWithKey1 f = onNest2 (Map.intersectionWithKey $ onBare2 . f)
+intersectionWithKey1 f = onWrap2 (Map.intersectionWithKey $ onCore2 . f)
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Intersection with a combining function.
 intersectionWithKey2 ::
@@ -2308,18 +2325,18 @@ intersectionWithKey5 f = intersectionWithKey (intersectionWithKey4 . f)
 -- | /O(n)/. Strictly more general than 'fmap' in that it may change the types of the inner keys.
 mapShallow ::
   (DeepMap ks v -> DeepMap ls w) -> DeepMap (k ': ks) v -> DeepMap (k ': ls) w
-mapShallow f (Nest m) = Nest $ fmap f m
+mapShallow f (Wrap m) = Wrap $ fmap f m
 
 -- | /O(n)/. Like 'mapShallow' but the function has access to the outer keys.
 mapShallowWithKey ::
   (k -> DeepMap ks v -> DeepMap ls w) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w
-mapShallowWithKey f (Nest m) = Nest $ Map.mapWithKey f m
+mapShallowWithKey f (Wrap m) = Wrap $ Map.mapWithKey f m
 
 -- | /O(n)/. Like 'fmap' but the function has access to the outer keys.
 mapWithKey1 :: (k -> v -> w) -> DeepMap '[k] v -> DeepMap '[k] w
-mapWithKey1 f (Nest m) = Nest $ Map.mapWithKey (fmap . f) m
+mapWithKey1 f (Wrap m) = Wrap $ Map.mapWithKey (fmap . f) m
 
 -- | /O(n)/. Like 'fmap' but the function has access to the outer keys.
 mapWithKey2 ::
@@ -2351,7 +2368,7 @@ traverseShallow ::
   (DeepMap ks v -> f (DeepMap ls w)) ->
   DeepMap (k ': ks) v ->
   f (DeepMap (k ': ls) w)
-traverseShallow f (Nest m) = Nest <$> traverse f m
+traverseShallow f (Wrap m) = Wrap <$> traverse f m
 
 -- | /O(n)/. Like 'traverseShallow' but the function has access to the keys.
 traverseShallowWithKey ::
@@ -2359,12 +2376,12 @@ traverseShallowWithKey ::
   (k -> DeepMap ks v -> f (DeepMap ls w)) ->
   DeepMap (k ': ks) v ->
   f (DeepMap (k ': ls) w)
-traverseShallowWithKey f (Nest m) = Nest <$> Map.traverseWithKey f m
+traverseShallowWithKey f (Wrap m) = Wrap <$> Map.traverseWithKey f m
 
 -- | /O(n)/. Like 'traverse' but the function has access to the keys.
 traverseWithKey1 ::
   (Applicative f) => (k -> v -> f w) -> DeepMap '[k] v -> f (DeepMap '[k] w)
-traverseWithKey1 f (Nest m) = Nest <$> Map.traverseWithKey (traverse . f) m
+traverseWithKey1 f (Wrap m) = Wrap <$> Map.traverseWithKey (traverse . f) m
 
 -- | /O(n)/. Like 'traverse' but the function has access to the keys.
 traverseWithKey2 ::
@@ -2404,7 +2421,7 @@ traverseMaybeWithKey ::
   (k -> DeepMap ks v -> f (Maybe (DeepMap ls w))) ->
   DeepMap (k ': ks) v ->
   f (DeepMap (k ': ls) w)
-traverseMaybeWithKey f (Nest m) = Nest <$> Map.traverseMaybeWithKey f m
+traverseMaybeWithKey f (Wrap m) = Wrap <$> Map.traverseMaybeWithKey f m
 
 -- | /O(n)/. Traverse keys/values and collect the 'Just' results.
 traverseMaybeWithKey1 ::
@@ -2412,7 +2429,7 @@ traverseMaybeWithKey1 ::
   (k -> v -> f (Maybe w)) ->
   DeepMap '[k] v ->
   f (DeepMap '[k] w)
-traverseMaybeWithKey1 f (Nest m) = Nest <$> Map.traverseMaybeWithKey (\k (Bare v) -> fmap Bare <$> f k v) m
+traverseMaybeWithKey1 f (Wrap m) = Wrap <$> Map.traverseMaybeWithKey (\k (Core v) -> fmap Core <$> f k v) m
 
 -- | /O(n)/. Traverse keys/values and collect the 'Just' results.
 traverseMaybeWithKey2 ::
@@ -2452,12 +2469,12 @@ mapAccum ::
   acc ->
   DeepMap (k ': ks) v ->
   (acc, DeepMap (k ': ls) w)
-mapAccum f acc (Nest m) = Nest <$> Map.mapAccum f acc m
+mapAccum f acc (Wrap m) = Wrap <$> Map.mapAccum f acc m
 
 -- | /O(n)/. Thread an accumulating argument through the 'DeepMap' in ascending order of keys.
 mapAccum1 ::
   (acc -> v -> (acc, w)) -> acc -> DeepMap '[k] v -> (acc, DeepMap '[k] w)
-mapAccum1 f = mapAccum (\a (Bare v) -> Bare <$> f a v)
+mapAccum1 f = mapAccum (\a (Core v) -> Core <$> f a v)
 
 -- | /O(n)/. Thread an accumulating argument through the 'DeepMap' in descending order of keys.
 mapAccumR ::
@@ -2465,12 +2482,12 @@ mapAccumR ::
   acc ->
   DeepMap (k ': ks) v ->
   (acc, DeepMap (k ': ls) w)
-mapAccumR f acc (Nest m) = Nest <$> Map.mapAccum f acc m
+mapAccumR f acc (Wrap m) = Wrap <$> Map.mapAccum f acc m
 
 -- | /O(n)/. Thread an accumulating argument through the 'DeepMap' in descending order of keys.
 mapAccumR1 ::
   (acc -> v -> (acc, w)) -> acc -> DeepMap '[k] v -> (acc, DeepMap '[k] w)
-mapAccumR1 f = mapAccumR (\a (Bare v) -> Bare <$> f a v)
+mapAccumR1 f = mapAccumR (\a (Core v) -> Core <$> f a v)
 
 -- | /O(n)/. Like 'mapAccum' but the function has access to the keys.
 mapAccumWithKey ::
@@ -2478,12 +2495,12 @@ mapAccumWithKey ::
   acc ->
   DeepMap (k ': ks) v ->
   (acc, DeepMap (k ': ls) w)
-mapAccumWithKey f acc (Nest m) = Nest <$> Map.mapAccumWithKey f acc m
+mapAccumWithKey f acc (Wrap m) = Wrap <$> Map.mapAccumWithKey f acc m
 
 -- | /O(n)/. Like 'mapAccum' but the function has access to the keys.
 mapAccumWithKey1 ::
   (acc -> k -> v -> (acc, w)) -> acc -> DeepMap '[k] v -> (acc, DeepMap '[k] w)
-mapAccumWithKey1 f = mapAccumWithKey (\k a (Bare v) -> Bare <$> f k a v)
+mapAccumWithKey1 f = mapAccumWithKey (\k a (Core v) -> Core <$> f k a v)
 
 -- | /O(n)/. Like 'mapAccum' but the function has access to the keys.
 mapAccumWithKey2 ::
@@ -2523,12 +2540,12 @@ mapAccumRWithKey ::
   acc ->
   DeepMap (k ': ks) v ->
   (acc, DeepMap (k ': ls) w)
-mapAccumRWithKey f acc (Nest m) = Nest <$> Map.mapAccumRWithKey f acc m
+mapAccumRWithKey f acc (Wrap m) = Wrap <$> Map.mapAccumRWithKey f acc m
 
 -- | /O(n)/. Like 'mapAccumR' but the function has access to the keys.
 mapAccumRWithKey1 ::
   (acc -> k -> v -> (acc, w)) -> acc -> DeepMap '[k] v -> (acc, DeepMap '[k] w)
-mapAccumRWithKey1 f = mapAccumRWithKey (\k a (Bare v) -> Bare <$> f k a v)
+mapAccumRWithKey1 f = mapAccumRWithKey (\k a (Core v) -> Core <$> f k a v)
 
 -- | /O(n)/. Like 'mapAccumR' but the function has access to the keys.
 mapAccumRWithKey2 ::
@@ -2572,14 +2589,14 @@ mapKeys ::
   (j -> k) ->
   DeepMap (j ': ks) v ->
   DeepMap (k ': ks) v
-mapKeys f (Nest m) = Nest $ Map.mapKeysWith (<>) f m
+mapKeys f (Wrap m) = Wrap $ Map.mapKeysWith (<>) f m
 
 mapKeysDeep ::
   (Monoid (DeepMap ks v)) =>
   ((Deep js -> Deep ks) -> DeepMap js v -> DeepMap ks v)
 mapKeysDeep jk = \case
-  Bare v -> deep (jk Deep0) v
-  Nest (m :: Map j (DeepMap js0 v)) -> ifoldMap (mapKeysDeep . (jk .) . Deep1) m
+  Core v -> deep (jk D0) v
+  Wrap (m :: Map j (DeepMap js0 v)) -> ifoldMap (mapKeysDeep . (jk .) . D1) m
 
 -- | /O(n log n)/. Map a function over the keys of a 'DeepMap'.
 mapKeys1 :: (Ord k, Semigroup v) => (j -> k) -> DeepMap '[j] v -> DeepMap '[k] v
@@ -2634,12 +2651,12 @@ mapKeysWith ::
   (j -> k) ->
   DeepMap (j ': ks) v ->
   DeepMap (k ': ks) v
-mapKeysWith (~~) f (Nest m) = Nest $ Map.mapKeysWith (~~) f m
+mapKeysWith (~~) f (Wrap m) = Wrap $ Map.mapKeysWith (~~) f m
 
 -- | /O(n log n)/. Map a function over the keys of a 'DeepMap' with a value-combining function.
 mapKeysWith1 ::
   (Ord k) => (v -> v -> v) -> (j -> k) -> DeepMap '[j] v -> DeepMap '[k] v
-mapKeysWith1 (~~) = mapKeysWith (onBare2 (~~))
+mapKeysWith1 (~~) = mapKeysWith (onCore2 (~~))
 
 -- | /O(n log n)/. Map a function over the keys of a 'DeepMap' with a value-combining function.
 mapKeysWith2 ::
@@ -2694,7 +2711,7 @@ traverseKeys ::
   (j -> f k) ->
   DeepMap (j ': ks) v ->
   f (DeepMap (k ': ks) v)
-traverseKeys f (Nest m) = Nest <$> traverseKeysMap f m
+traverseKeys f (Wrap m) = Wrap <$> traverseKeysMap f m
  where
   traverseKeysMap ::
     (Applicative f, Ord k) => (j -> f k) -> Map j a -> f (Map k a)
@@ -2707,8 +2724,8 @@ traverseKeysDeep ::
   DeepMap js v ->
   f (DeepMap ks v)
 traverseKeysDeep f = \case
-  Bare v -> f Deep0 <&> (`deep` v)
-  Nest m -> fold <$> itraverse (traverseKeysDeep . (f .) . Deep1) m
+  Core v -> f D0 <&> (`deep` v)
+  Wrap m -> fold <$> itraverse (traverseKeysDeep . (f .) . D1) m
 
 -- | /O(n log n)/. Map an applicative function over the outer keys of the map
 --   and collect the results using the specified combining function.
@@ -2718,7 +2735,7 @@ traverseKeysWith ::
   (j -> f k) ->
   DeepMap (j ': ks) v ->
   f (DeepMap (k ': ks) v)
-traverseKeysWith (~~) f (Nest m) = Nest <$> traverseKeysWithMap (~~) f m
+traverseKeysWith (~~) f (Wrap m) = Wrap <$> traverseKeysWithMap (~~) f m
  where
   traverseKeysWithMap ::
     (Applicative f, Ord k) => (a -> a -> a) -> (j -> f k) -> Map j a -> f (Map k a)
@@ -2800,7 +2817,7 @@ mapKeysMWith1 ::
   (j -> m k) ->
   DeepMap '[j] v ->
   m (DeepMap '[k] v)
-mapKeysMWith1 (~~) = mapKeysMWith (onBare2 (~~))
+mapKeysMWith1 (~~) = mapKeysMWith (onCore2 (~~))
 
 -- | /O(n log n)/. Map a monadic function over the keys of a 'DeepMap' with a value-combining function.
 mapKeysMWith2 ::
@@ -2856,15 +2873,15 @@ mapKeysMWith5 (~~) f0 f1 f2 f3 f4 m =
     =<< traverseShallow (mapKeysMWith4 (~~) f1 f2 f3 f4) m
 
 foldShallow :: (Monoid (DeepMap ks v)) => DeepMap (k ': ks) v -> DeepMap ks v
-foldShallow (Nest m) = fold m
+foldShallow (Wrap m) = fold m
 
 -- | /O(n)/. Fold the keys and submaps in the 'DeepMap' using the given right-associative binary operator.
 foldrWithKey :: (k -> DeepMap ks v -> b -> b) -> b -> DeepMap (k ': ks) v -> b
-foldrWithKey f z (Nest m) = Map.foldrWithKey f z m
+foldrWithKey f z (Wrap m) = Map.foldrWithKey f z m
 
 -- | /O(n)/. Fold the keys and values using the given right-associative binary operator.
 foldrWithKey1 :: (k -> v -> b -> b) -> b -> DeepMap '[k] v -> b
-foldrWithKey1 f = foldrWithKey (\k (Bare v) -> f k v)
+foldrWithKey1 f = foldrWithKey (\k (Core v) -> f k v)
 
 -- | /O(n)/. Fold the keys and values using the given right-associative binary operator.
 foldrWithKey2 :: (k0 -> k1 -> v -> b -> b) -> b -> DeepMap '[k0, k1] v -> b
@@ -2890,11 +2907,11 @@ foldrWithKey5 f = foldrWithKey (\k0 dm b -> foldrWithKey4 (f k0) b dm)
 
 -- | /O(n)/. Fold the keys and submaps in the 'DeepMap' using the given left-associative binary operator.
 foldlWithKey :: (b -> k -> DeepMap ks v -> b) -> b -> DeepMap (k ': ks) v -> b
-foldlWithKey f z (Nest m) = Map.foldlWithKey f z m
+foldlWithKey f z (Wrap m) = Map.foldlWithKey f z m
 
 -- | /O(n)/. Fold the keys and values in the 'DeepMap' using the given left-associative binary operator.
 foldlWithKey1 :: (b -> k -> v -> b) -> b -> DeepMap '[k] v -> b
-foldlWithKey1 f = foldlWithKey (\b k (Bare v) -> f b k v)
+foldlWithKey1 f = foldlWithKey (\b k (Core v) -> f b k v)
 
 -- | /O(n)/. Fold the keys and values in the 'DeepMap' using the given left-associative binary operator.
 foldlWithKey2 :: (b -> k0 -> k1 -> v -> b) -> b -> DeepMap '[k0, k1] v -> b
@@ -2920,11 +2937,11 @@ foldlWithKey5 f = foldlWithKey (\b k0 -> foldlWithKey4 (`f` k0) b)
 
 -- | /O(n)/. Strictly fold the keys and submaps in the 'DeepMap' using the given right-associative binary operator.
 foldrWithKey' :: (k -> DeepMap ks v -> b -> b) -> b -> DeepMap (k ': ks) v -> b
-foldrWithKey' f z (Nest m) = Map.foldrWithKey' f z m
+foldrWithKey' f z (Wrap m) = Map.foldrWithKey' f z m
 
 -- | /O(n)/. Strictly fold the keys and values using the given right-associative binary operator.
 foldrWithKey1' :: (k -> v -> b -> b) -> b -> DeepMap '[k] v -> b
-foldrWithKey1' f = foldrWithKey' (\k (Bare v) -> f k v)
+foldrWithKey1' f = foldrWithKey' (\k (Core v) -> f k v)
 
 -- | /O(n)/. Strictly fold the keys and values using the given right-associative binary operator.
 foldrWithKey2' :: (k0 -> k1 -> v -> b -> b) -> b -> DeepMap '[k0, k1] v -> b
@@ -2950,11 +2967,11 @@ foldrWithKey5' f = foldrWithKey' (\k0 dm b -> foldrWithKey4' (f k0) b dm)
 
 -- | /O(n)/. Strictly fold the keys and submaps in the 'DeepMap' using the given left-associative binary operator.
 foldlWithKey' :: (b -> k -> DeepMap ks v -> b) -> b -> DeepMap (k ': ks) v -> b
-foldlWithKey' f z (Nest m) = Map.foldlWithKey' f z m
+foldlWithKey' f z (Wrap m) = Map.foldlWithKey' f z m
 
 -- | /O(n)/. Strictly fold the keys and values in the 'DeepMap' using the given left-associative binary operator.
 foldlWithKey1' :: (b -> k -> v -> b) -> b -> DeepMap '[k] v -> b
-foldlWithKey1' f = foldlWithKey' (\b k (Bare v) -> f b k v)
+foldlWithKey1' f = foldlWithKey' (\b k (Core v) -> f b k v)
 
 -- | /O(n)/. Strictly fold the keys and values in the 'DeepMap' using the given left-associative binary operator.
 foldlWithKey2' :: (b -> k0 -> k1 -> v -> b) -> b -> DeepMap '[k0, k1] v -> b
@@ -2981,11 +2998,11 @@ foldlWithKey5' f = foldlWithKey' (\b k0 -> foldlWithKey4' (`f` k0) b)
 -- | /O(n)/. Fold the keys and submaps using the given monoid.
 foldMapWithKey ::
   (Monoid m) => (k -> DeepMap ks v -> m) -> DeepMap (k ': ks) v -> m
-foldMapWithKey f (Nest m) = Map.foldMapWithKey f m
+foldMapWithKey f (Wrap m) = Map.foldMapWithKey f m
 
 -- | /O(n)/. Fold the keys and values in the map using the given monoid.
 foldMapWithKey1 :: (Monoid m) => (k -> v -> m) -> DeepMap '[k] v -> m
-foldMapWithKey1 f = foldMapWithKey (\k (Bare v) -> f k v)
+foldMapWithKey1 f = foldMapWithKey (\k (Core v) -> f k v)
 
 -- | /O(n)/. Fold the keys and values in the map using the given monoid.
 foldMapWithKey2 ::
@@ -3016,11 +3033,11 @@ foldMapWithKey5 f = foldMapWithKey (foldMapWithKey4 . f)
 -- | /O(n)/. Fold the keys and submaps using the given monoid.
 foldMapWithKey' ::
   (Monoid m) => (k -> DeepMap ks v -> m) -> DeepMap (k ': ks) v -> m
-foldMapWithKey' f (Nest m) = Map.foldlWithKey' (\acc k v -> acc <> f k v) mempty m
+foldMapWithKey' f (Wrap m) = Map.foldlWithKey' (\acc k v -> acc <> f k v) mempty m
 
 -- | /O(n)/. Fold the keys and values in the map using the given monoid.
 foldMapWithKey1' :: (Monoid m) => (k -> v -> m) -> DeepMap '[k] v -> m
-foldMapWithKey1' f = foldMapWithKey' (\k (Bare v) -> f k v)
+foldMapWithKey1' f = foldMapWithKey' (\k (Core v) -> f k v)
 
 -- | /O(n)/. Fold the keys and values in the map using the given monoid.
 foldMapWithKey2' ::
@@ -3051,20 +3068,20 @@ foldMapWithKey5' f = foldMapWithKey' (foldMapWithKey4' . f)
 -- | /O(n)/. Convert the map to a list of key/submap pairs where the keys are in ascending order.
 --   Subject to list fusion.
 toAscList :: DeepMap (k ': ks) v -> [(k, DeepMap ks v)]
-toAscList (Nest m) = Map.toAscList m
+toAscList (Wrap m) = Map.toAscList m
 
 -- | /O(n)/. Convert the map to a list of key/submap pairs where the keys are in descending order.
 --   Subject to list fusion.
 toDescList :: DeepMap (k ': ks) v -> [(k, DeepMap ks v)]
-toDescList (Nest m) = Map.toDescList m
+toDescList (Wrap m) = Map.toDescList m
 
 -- | /O(n)/. Filter all submaps that satisfy the predicate.
 filter :: (DeepMap ks v -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-filter p (Nest m) = Nest $ Map.filter p m
+filter p (Wrap m) = Wrap $ Map.filter p m
 
 -- | /O(n)/. Filter all values that satisfy the predicate.
 filter1 :: (v -> Bool) -> DeepMap '[k] v -> DeepMap '[k] v
-filter1 p (Nest m) = Nest $ Map.filter (p . getBare) m
+filter1 p (Wrap m) = Wrap $ Map.filter (p . getCore) m
 
 -- | /O(n)/. Filter all values that satisfy the predicate.
 filter2 :: (v -> Bool) -> DeepMap '[k0, k1] v -> DeepMap '[k0, k1] v
@@ -3089,7 +3106,7 @@ filter5 p m = mapShallow (filter4 p) $ filter (any p) m
 -- | /O(n)/. Filter all key/submap pairs that satisfy the predicate.
 filterWithKey ::
   (k -> DeepMap ks v -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-filterWithKey p (Nest m) = Nest $ Map.filterWithKey p m
+filterWithKey p (Wrap m) = Wrap $ Map.filterWithKey p m
 
 -- | /O(n)/. Filter all key/value pairs that satisfy the predicate.
 filterWithKey1 :: (k -> v -> Bool) -> DeepMap '[k] v -> DeepMap '[k] v
@@ -3138,7 +3155,7 @@ filterWithKey5 p =
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Restrict a 'Map' to only the keys in a given 'Set'.
 restrictKeys :: (Ord k) => DeepMap (k ': ks) v -> Set k -> DeepMap (k ': ks) v
-restrictKeys (Nest m) s = Nest $ Map.restrictKeys m s
+restrictKeys (Wrap m) s = Wrap $ Map.restrictKeys m s
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Restrict a 'Map' to only the keys in a given 'Set'.
 restrictKeys2 ::
@@ -3183,7 +3200,7 @@ restrictKeys5 m s =
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Remove all the keys in a 'Set' from a 'Map'.
 withoutKeys :: (Ord k) => DeepMap (k ': ks) v -> Set k -> DeepMap (k ': ks) v
-withoutKeys (Nest m) s = Nest $ Map.withoutKeys m s
+withoutKeys (Wrap m) s = Wrap $ Map.withoutKeys m s
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Remove all the keys in a 'Set' from a 'Map'.
 withoutKeys2 ::
@@ -3231,11 +3248,11 @@ partition ::
   (DeepMap ks v -> Bool) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
-partition p (Nest m) = Nest *** Nest $ Map.partition p m
+partition p (Wrap m) = Wrap *** Wrap $ Map.partition p m
 
 -- | /O(n)/. Partition the map according to a predicate (satisfied, failed).
 partition1 :: (v -> Bool) -> DeepMap '[k] v -> (DeepMap '[k] v, DeepMap '[k] v)
-partition1 p = partition (p . getBare)
+partition1 p = partition (p . getCore)
 
 -- | /O(n)/. Partition the map according to a predicate (satisfied, failed).
 partition2 ::
@@ -3268,12 +3285,12 @@ partitionWithKey ::
   (k -> DeepMap ks v -> Bool) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
-partitionWithKey p (Nest m) = Nest *** Nest $ Map.partitionWithKey p m
+partitionWithKey p (Wrap m) = Wrap *** Wrap $ Map.partitionWithKey p m
 
 -- | /O(n)/. Partition the map according to a predicate (satisfied, failed).
 partitionWithKey1 ::
   (k -> v -> Bool) -> DeepMap '[k] v -> (DeepMap '[k] v, DeepMap '[k] v)
-partitionWithKey1 p = partitionWithKey (\k -> p k . getBare)
+partitionWithKey1 p = partitionWithKey (\k -> p k . getCore)
 
 -- | /O(n)/. Partition the map according to a predicate (satisfied, failed).
 partitionWithKey2 ::
@@ -3306,11 +3323,11 @@ partitionWithKey5 p =
 
 -- | /O(n)/. Take while a predicate on the keys holds. See the note at 'spanAntitone'.
 takeWhileAntitone :: (k -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-takeWhileAntitone p (Nest m) = Nest $ Map.takeWhileAntitone p m
+takeWhileAntitone p (Wrap m) = Wrap $ Map.takeWhileAntitone p m
 
 -- | /O(n)/. Drop while a predicate on the keys holds. See the note at 'spanAntitone'.
 dropWhileAntitone :: (k -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-dropWhileAntitone p (Nest m) = Nest $ Map.dropWhileAntitone p m
+dropWhileAntitone p (Wrap m) = Wrap $ Map.dropWhileAntitone p m
 
 -- | /O(n)/. Take while a predicate on the keys holds.
 --
@@ -3319,29 +3336,29 @@ dropWhileAntitone p (Nest m) = Nest $ Map.dropWhileAntitone p m
 --   (where the predicate is seen to hold before the first key and to fail after the last key).
 spanAntitone ::
   (k -> Bool) -> DeepMap (k ': ks) v -> (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
-spanAntitone p (Nest m) = Nest *** Nest $ Map.spanAntitone p m
+spanAntitone p (Wrap m) = Wrap *** Wrap $ Map.spanAntitone p m
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybe :: (v -> Maybe w) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) w
-mapMaybe f (Nest m) = Nest $ Map.mapMaybe (traverse f) m
+mapMaybe f (Wrap m) = Wrap $ Map.mapMaybe (traverse f) m
 
 -- | /O(n)/. Map values and collect the 'Just' results. Strictly more general than 'mapMaybe' in that the types of the inner keys can change.
 mapShallowMaybe ::
   (DeepMap ks v -> Maybe (DeepMap ls w)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w
-mapShallowMaybe f (Nest m) = Nest $ Map.mapMaybe f m
+mapShallowMaybe f (Wrap m) = Wrap $ Map.mapMaybe f m
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapShallowMaybeWithKey ::
   (k -> DeepMap ks v -> Maybe (DeepMap ls w)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ls) w
-mapShallowMaybeWithKey f (Nest m) = Nest $ Map.mapMaybeWithKey f m
+mapShallowMaybeWithKey f (Wrap m) = Wrap $ Map.mapMaybeWithKey f m
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybeWithKey1 :: (k -> v -> Maybe w) -> DeepMap '[k] v -> DeepMap '[k] w
-mapMaybeWithKey1 f = mapShallowMaybeWithKey (\k -> fmap Bare . f k . getBare)
+mapMaybeWithKey1 f = mapShallowMaybeWithKey (\k -> fmap Core . f k . getCore)
 
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybeWithKey2 ::
@@ -3396,20 +3413,20 @@ mapShallowEither ::
   (DeepMap ks v -> Either (DeepMap ls w) (DeepMap ms x)) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ls) w, DeepMap (k ': ms) x)
-mapShallowEither f (Nest m) = Nest *** Nest $ Map.mapEither f m
+mapShallowEither f (Wrap m) = Wrap *** Wrap $ Map.mapEither f m
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapShallowEitherWithKey ::
   (k -> DeepMap ks v -> Either (DeepMap ls w) (DeepMap ms x)) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ls) w, DeepMap (k ': ms) x)
-mapShallowEitherWithKey f (Nest m) = Nest *** Nest $ Map.mapEitherWithKey f m
+mapShallowEitherWithKey f (Wrap m) = Wrap *** Wrap $ Map.mapEitherWithKey f m
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEitherWithKey1 ::
   (k -> v -> Either w x) -> DeepMap '[k] v -> (DeepMap '[k] w, DeepMap '[k] x)
-mapEitherWithKey1 f (Nest m) =
-  Nest *** Nest $ Map.mapEitherWithKey (\k -> (Bare +++ Bare) . f k . getBare) m
+mapEitherWithKey1 f (Wrap m) =
+  Wrap *** Wrap $ Map.mapEitherWithKey (\k -> (Core +++ Core) . f k . getCore) m
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEitherWithKey2 ::
@@ -3467,7 +3484,7 @@ split ::
   k ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
-split k (Nest m) = Nest *** Nest $ Map.split k m
+split k (Wrap m) = Wrap *** Wrap $ Map.split k m
 
 -- | /O(log n)/. Like 'split' but the middle coordinate 'lookup's the value at the key.
 splitLookup ::
@@ -3475,17 +3492,17 @@ splitLookup ::
   k ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) v, Maybe (DeepMap ks v), DeepMap (k ': ks) v)
-splitLookup k (Nest m) = Map.splitLookup k m & \(n, y, p) -> (Nest n, y, Nest p)
+splitLookup k (Wrap m) = Map.splitLookup k m & \(n, y, p) -> (Wrap n, y, Wrap p)
 
 -- | /O(1)/. Decompose a map into pieces based on the structure of the underlying tree.
 splitRoot :: DeepMap (k ': ks) v -> [DeepMap (k ': ks) v]
-splitRoot (Nest m) = Nest <$> Map.splitRoot m
+splitRoot (Wrap m) = Wrap <$> Map.splitRoot m
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Returns 'True' if all the keys in the left map
 --   exist in the right, __and__ their values all agree.
 isSubmapOf ::
   (Ord k, Eq (DeepMap ks v)) => DeepMap (k ': ks) v -> DeepMap (k ': ks) v -> Bool
-isSubmapOf (Nest m) (Nest n) = Map.isSubmapOf m n
+isSubmapOf (Wrap m) (Wrap n) = Map.isSubmapOf m n
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Returns 'True' if all the keys in the left map
 --   exist in the right, __and__ the function returns 'True' when applied to respective values.
@@ -3495,13 +3512,13 @@ isSubmapOfBy ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v ->
   Bool
-isSubmapOfBy f (Nest m) (Nest n) = Map.isSubmapOfBy f m n
+isSubmapOfBy f (Wrap m) (Wrap n) = Map.isSubmapOfBy f m n
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Returns 'True' if all the keys in the left map
 --   exist in the right, __and__ their values all agree, __and__ the maps are not equal.
 isProperSubmapOf ::
   (Ord k, Eq (DeepMap ks v)) => DeepMap (k ': ks) v -> DeepMap (k ': ks) v -> Bool
-isProperSubmapOf (Nest m) (Nest n) = Map.isProperSubmapOf m n
+isProperSubmapOf (Wrap m) (Wrap n) = Map.isProperSubmapOf m n
 
 -- | /O(m log(n \/ m + 1)), m <= n/. Returns 'True' if all the keys in the left map
 --   exist in the right, __and__ the function returns 'True' when applied to respective values,
@@ -3512,24 +3529,24 @@ isProperSubmapOfBy ::
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v ->
   Bool
-isProperSubmapOfBy f (Nest m) (Nest n) = Map.isProperSubmapOfBy f m n
+isProperSubmapOfBy f (Wrap m) (Wrap n) = Map.isProperSubmapOfBy f m n
 
 -- | /O(log n)/. Lookup the /index/ of a key, which is its zero-based index
 --   in the ordered sequence of keys.
 --
 -- > 'lookupIndex' k m == 'Data.List.findIndex' k ('keys' m)
 lookupIndex :: (Ord k) => k -> DeepMap (k ': ks) v -> Maybe Int
-lookupIndex k (Nest m) = Map.lookupIndex k m
+lookupIndex k (Wrap m) = Map.lookupIndex k m
 
 -- | /O(log n)/. Lookup the /index/ of a key, which is its zero-based index
 --   in the ordered sequence of keys. Calls 'error' when the key is not in the map.
 findIndex :: (Ord k) => k -> DeepMap (k ': ks) v -> Int
-findIndex i (Nest m) = Map.findIndex i m
+findIndex i (Wrap m) = Map.findIndex i m
 
 -- | /O(log n)/. Retrieve an element by its /index/. Calls 'error' if @i@ is outside
 --   the range @0 <= i < 'size' m@.
 elemAt :: (Ord k) => Int -> DeepMap (k ': ks) v -> (k, DeepMap ks v)
-elemAt i (Nest m) = Map.elemAt i m
+elemAt i (Wrap m) = Map.elemAt i m
 
 -- | /O(log n)/. Update the element by its /index/. Calls 'error' if @i@ is outside
 --   the range @0 <= i < 'size' m@.
@@ -3539,7 +3556,7 @@ updateAt ::
   Int ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-updateAt f i (Nest m) = Nest $ Map.updateAt f i m
+updateAt f i (Wrap m) = Wrap $ Map.updateAt f i m
 
 -- | /O(log n)/. Delete the element by its /index/. Calls 'error' if @i@ is outside
 --   the range @0 <= i < 'size' m@.
@@ -3549,106 +3566,106 @@ deleteAt ::
   Int ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-deleteAt f i (Nest m) = Nest $ Map.updateAt f i m
+deleteAt f i (Wrap m) = Wrap $ Map.updateAt f i m
 
 -- | Take the smallest @n@ keys.
 take :: Int -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-take n (Nest m) = Nest $ Map.take n m
+take n (Wrap m) = Wrap $ Map.take n m
 
 -- | Drop the smallest @n@ keys.
 drop :: Int -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-drop n (Nest m) = Nest $ Map.take n m
+drop n (Wrap m) = Wrap $ Map.take n m
 
 -- | /O(n)/. Split a map at a particular index.
 splitAt ::
   Int -> DeepMap (k ': ks) v -> (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
-splitAt i (Nest m) = Nest *** Nest $ Map.splitAt i m
+splitAt i (Wrap m) = Wrap *** Wrap $ Map.splitAt i m
 
 -- | /O(log n)/. The minimal key of the map, or 'Nothing' if the map is empty.
 lookupMin :: DeepMap (k ': ks) v -> Maybe (k, DeepMap ks v)
-lookupMin (Nest m) = Map.lookupMin m
+lookupMin (Wrap m) = Map.lookupMin m
 
 -- | /O(log n)/. The maximal key of the map, or 'Nothing' if the map is empty.
 lookupMax :: DeepMap (k ': ks) v -> Maybe (k, DeepMap ks v)
-lookupMax (Nest m) = Map.lookupMax m
+lookupMax (Wrap m) = Map.lookupMax m
 
 -- | /O(log n)/. The minimal key of the map, or 'error' if the map is empty.
 findMin :: DeepMap (k ': ks) v -> (k, DeepMap ks v)
-findMin (Nest m) = Map.findMin m
+findMin (Wrap m) = Map.findMin m
 
 -- | /O(log n)/. The maximal key of the map, or 'error' if the map is empty.
 findMax :: DeepMap (k ': ks) v -> (k, DeepMap ks v)
-findMax (Nest m) = Map.findMax m
+findMax (Wrap m) = Map.findMax m
 
 -- | /O(log n)/. Delete the minimal key.
 deleteMin :: DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-deleteMin (Nest m) = Nest $ Map.deleteMin m
+deleteMin (Wrap m) = Wrap $ Map.deleteMin m
 
 -- | /O(log n)/. Delete the maximal key.
 deleteMax :: DeepMap (k ': ks) v -> DeepMap (k ': ks) v
-deleteMax (Nest m) = Nest $ Map.deleteMax m
+deleteMax (Wrap m) = Wrap $ Map.deleteMax m
 
 -- | /O(log n)/. Delete and return the minimal key of the map, or 'error' if the map is empty.
 deleteFindMin :: DeepMap (k ': ks) v -> ((k, DeepMap ks v), DeepMap (k ': ks) v)
-deleteFindMin (Nest m) = Nest <$> Map.deleteFindMin m
+deleteFindMin (Wrap m) = Wrap <$> Map.deleteFindMin m
 
 -- | /O(log n)/. Delete and return the maximal key of the map, or 'error' if the map is empty.
 deleteFindMax :: DeepMap (k ': ks) v -> ((k, DeepMap ks v), DeepMap (k ': ks) v)
-deleteFindMax (Nest m) = Nest <$> Map.deleteFindMax m
+deleteFindMax (Wrap m) = Wrap <$> Map.deleteFindMax m
 
 -- | /O(log n)/. Update the value at the minimal key.
 updateMin ::
   (DeepMap ks v -> Maybe (DeepMap ks v)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-updateMin f (Nest m) = Nest $ Map.updateMin f m
+updateMin f (Wrap m) = Wrap $ Map.updateMin f m
 
 -- | /O(log n)/. Update the value at the maximal key.
 updateMax ::
   (DeepMap ks v -> Maybe (DeepMap ks v)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-updateMax f (Nest m) = Nest $ Map.updateMax f m
+updateMax f (Wrap m) = Wrap $ Map.updateMax f m
 
 -- | /O(log n)/. Update the value at the minimal key.
 updateMinWithKey ::
   (k -> DeepMap ks v -> Maybe (DeepMap ks v)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-updateMinWithKey f (Nest m) = Nest $ Map.updateMinWithKey f m
+updateMinWithKey f (Wrap m) = Wrap $ Map.updateMinWithKey f m
 
 -- | /O(log n)/. Update the value at the maximal key.
 updateMaxWithKey ::
   (k -> DeepMap ks v -> Maybe (DeepMap ks v)) ->
   DeepMap (k ': ks) v ->
   DeepMap (k ': ks) v
-updateMaxWithKey f (Nest m) = Nest $ Map.updateMaxWithKey f m
+updateMaxWithKey f (Wrap m) = Wrap $ Map.updateMaxWithKey f m
 
 -- | /O(log n)/. Retrieve the value associated with the minimal key of the map,
 --   and the map stripped of that element, or 'Nothing' if passed an empty map.
 minView :: DeepMap (k ': ks) v -> Maybe (DeepMap ks v, DeepMap (k ': ks) v)
-minView (Nest m) = fmap Nest <$> Map.minView m
+minView (Wrap m) = fmap Wrap <$> Map.minView m
 
 -- | /O(log n)/. Retrieve the value associated with the maximal key of the map,
 --   and the map stripped of that element, or 'Nothing' if passed an empty map.
 maxView :: DeepMap (k ': ks) v -> Maybe (DeepMap ks v, DeepMap (k ': ks) v)
-maxView (Nest m) = fmap Nest <$> Map.maxView m
+maxView (Wrap m) = fmap Wrap <$> Map.maxView m
 
 -- | /O(log n)/. Retrieve the minimal key/value pair of the map,
 --   and the map stripped of that element, or 'Nothing' if passed an empty map.
 minViewWithKey ::
   DeepMap (k ': ks) v -> Maybe ((k, DeepMap ks v), DeepMap (k ': ks) v)
-minViewWithKey (Nest m) = fmap Nest <$> Map.minViewWithKey m
+minViewWithKey (Wrap m) = fmap Wrap <$> Map.minViewWithKey m
 
 -- | /O(log n)/. Retrieve the maximal key/value pair of the map,
 --   and the map stripped of that element, or 'Nothing' if passed an empty map.
 maxViewWithKey ::
   DeepMap (k ': ks) v -> Maybe ((k, DeepMap ks v), DeepMap (k ': ks) v)
-maxViewWithKey (Nest m) = fmap Nest <$> Map.maxViewWithKey m
+maxViewWithKey (Wrap m) = fmap Wrap <$> Map.maxViewWithKey m
 
 -- | "Transpose" a 'DeepMap', by swapping the outer two "dimensions".
 invertKeys ::
   (Ord j, Ord k, Semigroup (DeepMap ks v)) =>
   DeepMap (j ': k ': ks) v ->
   DeepMap (k ': j ': ks) v
-invertKeys = mapKeysDeep \(Deep2 j k d0) -> Deep2 k j d0
+invertKeys = mapKeysDeep \(D2 j k d0) -> D2 k j d0

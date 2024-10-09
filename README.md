@@ -9,8 +9,8 @@ A `DeepMap` is a map that has several layers of keys.
 ```hs
 type DeepMap :: [Type] -> Type -> Type
 data DeepMap ks v where
-    Bare :: v -> DeepMap '[] v
-    Nest :: Map k (DeepMap ks v) -> DeepMap (k ': ks) v
+    Core :: v -> DeepMap '[] v
+    Wrap :: Map k (DeepMap ks v) -> DeepMap (k ': ks) v
 ```
 
 For a given `(k ': ks) :: [Type]`, the type `DeepMap (k ': ks) v` is isomorphic to lists of the form `[(k, k0, .., kn, v)]` where `ks = '[k0, ..., kn]`, but with better performance.

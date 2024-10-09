@@ -1,5 +1,9 @@
 # Revision history for deep-map
 
+## 0.3
+
+* rename constructors and patterns
+
 ## 0.2.0.1
 
 * Update copyright and re-trigger Hackage build with newer ghc
