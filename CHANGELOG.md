@@ -1,8 +1,15 @@
 # Revision history for deep-map
 
-## 0.3
+## 0.3.1
+
+* fix recursive definition of `mapMaybe`
+* add `filterWithKeys` and `partitionWithKeys`
+
+## 0.3.0
 
 * rename constructors and patterns
+* add support for `witherable` classes
+* add `mapMaybeWithKeys` and `mapEitherWithKeys`
 
 ## 0.2.0.1
 

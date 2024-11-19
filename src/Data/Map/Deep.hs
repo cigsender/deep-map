@@ -346,6 +346,7 @@ module Data.Map.Deep
   , filter4
   , filter5
   , filterWithKey
+  , filterWithKeys
   , filterWithKey1
   , filterWithKey2
   , filterWithKey3
@@ -368,6 +369,7 @@ module Data.Map.Deep
   , partition4
   , partition5
   , partitionWithKey
+  , partitionWithKeys
   , partitionWithKey1
   , partitionWithKey2
   , partitionWithKey3
@@ -376,7 +378,8 @@ module Data.Map.Deep
   , takeWhileAntitone
   , dropWhileAntitone
   , spanAntitone
-  , mapMaybe
+  , Data.Map.Deep.mapMaybe
+  , mapMaybeWithKeys
   , mapShallowMaybe
   , mapShallowMaybeWithKey
   , mapMaybeWithKey1
@@ -385,6 +388,7 @@ module Data.Map.Deep
   , mapMaybeWithKey4
   , mapMaybeWithKey5
   , mapEither
+  , mapEitherWithKeys
   , mapShallowEither
   , mapShallowEitherWithKey
   , mapEitherWithKey1
@@ -460,6 +464,13 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Traversable.WithIndex
 import GHC.Generics
+import Witherable
+  ( Filterable (mapMaybe)
+  , FilterableWithIndex (imapMaybe)
+  , Witherable (wither)
+  , WitherableWithIndex (iwither)
+  )
+import Witherable qualified
 import Prelude hiding
   ( drop
   , filter
@@ -519,6 +530,15 @@ deriving instance Functor (DeepMap ks)
 deriving instance Foldable (DeepMap ks)
 
 deriving instance Traversable (DeepMap ks)
+
+instance Filterable (DeepMap ks) where
+  mapMaybe f = \case
+    Core v -> maybe (error "DeepMap: mapMaybe shrink on Core") Core $ f v
+    Wrap m -> Wrap $ fmap (Witherable.mapMaybe f) m
+instance Witherable (DeepMap ks) where
+  wither f = \case
+    Core v -> maybe (error "DeepMap: withered Core") Core <$> f v
+    Wrap m -> Wrap <$> traverse (Witherable.wither f) m
 
 -- | For use with indexed maps, folds, and traversals.
 type Deep :: [Type] -> Type
@@ -582,6 +602,16 @@ instance (TraversableWithIndex (Deep ks) (DeepMap ks)) where
   itraverse f = \case
     Core v -> Core <$> f D0 v
     Wrap m -> Wrap <$> itraverse (itraverse . (f .) . D1) m
+
+instance FilterableWithIndex (Deep ks) (DeepMap ks) where
+  imapMaybe f = \case
+    Core v -> maybe (error "DeepMap: imapMaybe shrink on Core") Core $ f D0 v
+    Wrap m -> Wrap $ Map.mapMaybeWithKey (\k ds -> itraverse (f . D1 k) ds) m
+
+instance WitherableWithIndex (Deep ks) (DeepMap ks) where
+  iwither f = \case
+    Core v -> maybe (error "DeepMap: iwithered Core") Core <$> f D0 v
+    Wrap m -> Wrap <$> itraverse (Witherable.iwither . (f .) . D1) m
 
 deriving instance (Typeable v) => Typeable (DeepMap '[] v)
 
@@ -3108,6 +3138,9 @@ filterWithKey ::
   (k -> DeepMap ks v -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
 filterWithKey p (Wrap m) = Wrap $ Map.filterWithKey p m
 
+filterWithKeys :: (Deep (k ': ks) -> v -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
+filterWithKeys = Witherable.ifilter
+
 -- | /O(n)/. Filter all key/value pairs that satisfy the predicate.
 filterWithKey1 :: (k -> v -> Bool) -> DeepMap '[k] v -> DeepMap '[k] v
 filterWithKey1 p =
@@ -3287,6 +3320,12 @@ partitionWithKey ::
   (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
 partitionWithKey p (Wrap m) = Wrap *** Wrap $ Map.partitionWithKey p m
 
+partitionWithKeys ::
+  (Deep (k ': ks) -> v -> Bool) ->
+  DeepMap (k ': ks) v ->
+  (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
+partitionWithKeys p = Witherable.ifilter p &&& Witherable.ifilter ((not .) . p)
+
 -- | /O(n)/. Partition the map according to a predicate (satisfied, failed).
 partitionWithKey1 ::
   (k -> v -> Bool) -> DeepMap '[k] v -> (DeepMap '[k] v, DeepMap '[k] v)
@@ -3341,6 +3380,9 @@ spanAntitone p (Wrap m) = Wrap *** Wrap $ Map.spanAntitone p m
 -- | /O(n)/. Map values and collect the 'Just' results.
 mapMaybe :: (v -> Maybe w) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) w
 mapMaybe f (Wrap m) = Wrap $ Map.mapMaybe (traverse f) m
+
+mapMaybeWithKeys :: (Deep (k ': ks) -> a -> Maybe b) -> DeepMap (k ': ks) a -> DeepMap (k ': ks) b
+mapMaybeWithKeys = Witherable.imapMaybe
 
 -- | /O(n)/. Map values and collect the 'Just' results. Strictly more general than 'mapMaybe' in that the types of the inner keys can change.
 mapShallowMaybe ::
@@ -3404,8 +3446,17 @@ mapEither ::
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) w, DeepMap (k ': ks) x)
 mapEither f m =
-  ( mapMaybe ((Just ||| const Nothing) . f) m
-  , mapMaybe ((const Nothing ||| Just) . f) m
+  ( Data.Map.Deep.mapMaybe ((Just ||| const Nothing) . f) m
+  , Data.Map.Deep.mapMaybe ((const Nothing ||| Just) . f) m
+  )
+
+mapEitherWithKeys ::
+  (Deep (k ': ks) -> v -> Either w x) ->
+  DeepMap (k ': ks) v ->
+  (DeepMap (k ': ks) w, DeepMap (k ': ks) x)
+mapEitherWithKeys f m =
+  ( Witherable.imapMaybe (((Just ||| const Nothing) .) . f) m
+  , Witherable.imapMaybe (((const Nothing ||| Just) .) . f) m
   )
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
@@ -3434,7 +3485,9 @@ mapEitherWithKey2 ::
   DeepMap '[k0, k1] v ->
   (DeepMap '[k0, k1] w, DeepMap '[k0, k1] x)
 mapEitherWithKey2 f =
-  (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
+  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
+      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  )
     . partition2 isLeft
     . mapShallowWithKey (\k0 -> mapShallowWithKey $ fmap . f k0)
 
@@ -3444,7 +3497,9 @@ mapEitherWithKey3 ::
   DeepMap '[k0, k1, k2] v ->
   (DeepMap '[k0, k1, k2] w, DeepMap '[k0, k1, k2] x)
 mapEitherWithKey3 f =
-  (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
+  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
+      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  )
     . partition3 isLeft
     . mapShallowWithKey \k0 -> mapShallowWithKey $ \k1 ->
       mapShallowWithKey $ fmap . f k0 k1
@@ -3455,7 +3510,9 @@ mapEitherWithKey4 ::
   DeepMap '[k0, k1, k2, k3] v ->
   (DeepMap '[k0, k1, k2, k3] w, DeepMap '[k0, k1, k2, k3] x)
 mapEitherWithKey4 f =
-  (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
+  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
+      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  )
     . partition4 isLeft
     . mapShallowWithKey
       ( \k0 -> mapShallowWithKey $ \k1 ->
@@ -3469,7 +3526,9 @@ mapEitherWithKey5 ::
   DeepMap '[k0, k1, k2, k3, k4] v ->
   (DeepMap '[k0, k1, k2, k3, k4] w, DeepMap '[k0, k1, k2, k3, k4] x)
 mapEitherWithKey5 f =
-  (mapMaybe (Just ||| const Nothing) *** mapMaybe (const Nothing ||| Just))
+  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
+      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  )
     . partition5 isLeft
     . mapShallowWithKey
       ( \k0 -> mapShallowWithKey $ \k1 ->
