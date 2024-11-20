@@ -1,5 +1,9 @@
 # Revision history for deep-map
 
+## 0.3.2
+
+* fix `Filterable` and `Witherable` instances
+
 ## 0.3.1
 
 * fix recursive definition of `mapMaybe`
