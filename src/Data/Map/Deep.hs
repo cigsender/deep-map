@@ -531,14 +531,15 @@ deriving instance Foldable (DeepMap ks)
 
 deriving instance Traversable (DeepMap ks)
 
-instance Filterable (DeepMap ks) where
-  mapMaybe f = \case
-    Core v -> maybe (error "DeepMap: mapMaybe shrink on Core") Core $ f v
-    Wrap m -> Wrap $ fmap (Witherable.mapMaybe f) m
-instance Witherable (DeepMap ks) where
-  wither f = \case
-    Core v -> maybe (error "DeepMap: withered Core") Core <$> f v
-    Wrap m -> Wrap <$> traverse (Witherable.wither f) m
+instance Filterable (DeepMap '[k]) where
+  mapMaybe f (Wrap m) = Wrap $ Map.mapMaybe (fmap Core . f . getCore) m
+instance Witherable (DeepMap '[k]) where
+  wither f (Wrap m) = Wrap <$> wither (fmap (fmap Core) . f . getCore) m
+
+instance (Ord j, Filterable (DeepMap (k ': ks))) => Filterable (DeepMap (j ': k ': ks)) where
+  mapMaybe f (Wrap m) = Wrap $ fmap (Witherable.mapMaybe f) m
+instance (Ord j, Witherable (DeepMap (k ': ks))) => Witherable (DeepMap (j ': k ': ks)) where
+  wither f (Wrap m) = Wrap <$> traverse (Witherable.wither f) m
 
 -- | For use with indexed maps, folds, and traversals.
 type Deep :: [Type] -> Type
@@ -603,15 +604,22 @@ instance (TraversableWithIndex (Deep ks) (DeepMap ks)) where
     Core v -> Core <$> f D0 v
     Wrap m -> Wrap <$> itraverse (itraverse . (f .) . D1) m
 
-instance FilterableWithIndex (Deep ks) (DeepMap ks) where
-  imapMaybe f = \case
-    Core v -> maybe (error "DeepMap: imapMaybe shrink on Core") Core $ f D0 v
-    Wrap m -> Wrap $ Map.mapMaybeWithKey (\k ds -> itraverse (f . D1 k) ds) m
+instance FilterableWithIndex (Deep '[k]) (DeepMap '[k]) where
+  imapMaybe f (Wrap m) = Wrap $ Map.mapMaybeWithKey (\k (Core v) -> Core <$> f (D1 k D0) v) m
+instance WitherableWithIndex (Deep '[k]) (DeepMap '[k]) where
+  iwither f (Wrap m) = Wrap <$> iwither (\k (Core v) -> fmap Core <$> f (D1 k D0) v) m
 
-instance WitherableWithIndex (Deep ks) (DeepMap ks) where
-  iwither f = \case
-    Core v -> maybe (error "DeepMap: iwithered Core") Core <$> f D0 v
-    Wrap m -> Wrap <$> itraverse (Witherable.iwither . (f .) . D1) m
+instance
+  (Ord j, FilterableWithIndex (Deep (k ': ks)) (DeepMap (k ': ks))) =>
+  FilterableWithIndex (Deep (j ': k ': ks)) (DeepMap (j ': k ': ks))
+  where
+  imapMaybe f (Wrap m) = Wrap $ Map.mapWithKey (\k -> Witherable.imapMaybe (f . D1 k)) m
+
+instance
+  (Ord j, WitherableWithIndex (Deep (k ': ks)) (DeepMap (k ': ks))) =>
+  WitherableWithIndex (Deep (j ': k ': ks)) (DeepMap (j ': k ': ks))
+  where
+  iwither f (Wrap m) = Wrap <$> itraverse (\k -> Witherable.iwither (f . D1 k)) m
 
 deriving instance (Typeable v) => Typeable (DeepMap '[] v)
 
@@ -3138,7 +3146,14 @@ filterWithKey ::
   (k -> DeepMap ks v -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
 filterWithKey p (Wrap m) = Wrap $ Map.filterWithKey p m
 
-filterWithKeys :: (Deep (k ': ks) -> v -> Bool) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) v
+-- |
+-- The constraint is necessary for instance resolution,
+-- but should always be satisfied during normal use.
+filterWithKeys ::
+  (FilterableWithIndex (Deep (k ': ks)) (DeepMap (k ': ks))) =>
+  (Deep (k ': ks) -> v -> Bool) ->
+  DeepMap (k ': ks) v ->
+  DeepMap (k ': ks) v
 filterWithKeys = Witherable.ifilter
 
 -- | /O(n)/. Filter all key/value pairs that satisfy the predicate.
@@ -3320,7 +3335,11 @@ partitionWithKey ::
   (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
 partitionWithKey p (Wrap m) = Wrap *** Wrap $ Map.partitionWithKey p m
 
+-- |
+-- The constraint is necessary for instance resolution,
+-- but should always be satisfied during normal use.
 partitionWithKeys ::
+  (FilterableWithIndex (Deep (k ': ks)) (DeepMap (k ': ks))) =>
   (Deep (k ': ks) -> v -> Bool) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) v, DeepMap (k ': ks) v)
@@ -3381,7 +3400,14 @@ spanAntitone p (Wrap m) = Wrap *** Wrap $ Map.spanAntitone p m
 mapMaybe :: (v -> Maybe w) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) w
 mapMaybe f (Wrap m) = Wrap $ Map.mapMaybe (traverse f) m
 
-mapMaybeWithKeys :: (Deep (k ': ks) -> a -> Maybe b) -> DeepMap (k ': ks) a -> DeepMap (k ': ks) b
+-- |
+-- The constraint is necessary for instance resolution,
+-- but should always be satisfied during normal use.
+mapMaybeWithKeys ::
+  (FilterableWithIndex (Deep (k ': ks)) (DeepMap (k ': ks))) =>
+  (Deep (k ': ks) -> v -> Maybe w) ->
+  DeepMap (k ': ks) v ->
+  DeepMap (k ': ks) w
 mapMaybeWithKeys = Witherable.imapMaybe
 
 -- | /O(n)/. Map values and collect the 'Just' results. Strictly more general than 'mapMaybe' in that the types of the inner keys can change.
@@ -3450,7 +3476,11 @@ mapEither f m =
   , Data.Map.Deep.mapMaybe ((const Nothing ||| Just) . f) m
   )
 
+-- |
+-- The constraint is necessary for instance resolution,
+-- but should always be satisfied during normal use.
 mapEitherWithKeys ::
+  (FilterableWithIndex (Deep (k ': ks)) (DeepMap (k ': ks))) =>
   (Deep (k ': ks) -> v -> Either w x) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) w, DeepMap (k ': ks) x)
