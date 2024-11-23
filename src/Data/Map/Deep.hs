@@ -536,9 +536,9 @@ instance Filterable (DeepMap '[k]) where
 instance Witherable (DeepMap '[k]) where
   wither f (Wrap m) = Wrap <$> wither (fmap (fmap Core) . f . getCore) m
 
-instance (Ord j, Filterable (DeepMap (k ': ks))) => Filterable (DeepMap (j ': k ': ks)) where
+instance (Filterable (DeepMap (k ': ks))) => Filterable (DeepMap (j ': k ': ks)) where
   mapMaybe f (Wrap m) = Wrap $ fmap (Witherable.mapMaybe f) m
-instance (Ord j, Witherable (DeepMap (k ': ks))) => Witherable (DeepMap (j ': k ': ks)) where
+instance (Witherable (DeepMap (k ': ks))) => Witherable (DeepMap (j ': k ': ks)) where
   wither f (Wrap m) = Wrap <$> traverse (Witherable.wither f) m
 
 -- | For use with indexed maps, folds, and traversals.
@@ -3397,8 +3397,15 @@ spanAntitone ::
 spanAntitone p (Wrap m) = Wrap *** Wrap $ Map.spanAntitone p m
 
 -- | /O(n)/. Map values and collect the 'Just' results.
-mapMaybe :: (v -> Maybe w) -> DeepMap (k ': ks) v -> DeepMap (k ': ks) w
-mapMaybe f (Wrap m) = Wrap $ Map.mapMaybe (traverse f) m
+--
+-- The constraint is necessary for instance resolution,
+-- but should always be satisfied during normal use.
+mapMaybe ::
+  (Filterable (DeepMap (k ': ks))) =>
+  (v -> Maybe w) ->
+  DeepMap (k ': ks) v ->
+  DeepMap (k ': ks) w
+mapMaybe = Witherable.mapMaybe
 
 -- |
 -- The constraint is necessary for instance resolution,
@@ -3468,12 +3475,13 @@ mapMaybeWithKey5 f =
 
 -- | /O(n)/. Map values and collect the 'Left' and 'Right' results separately.
 mapEither ::
+  (Filterable (DeepMap (k ': ks))) =>
   (v -> Either w x) ->
   DeepMap (k ': ks) v ->
   (DeepMap (k ': ks) w, DeepMap (k ': ks) x)
 mapEither f m =
-  ( Data.Map.Deep.mapMaybe ((Just ||| const Nothing) . f) m
-  , Data.Map.Deep.mapMaybe ((const Nothing ||| Just) . f) m
+  ( Witherable.mapMaybe ((Just ||| const Nothing) . f) m
+  , Witherable.mapMaybe ((const Nothing ||| Just) . f) m
   )
 
 -- |
@@ -3515,8 +3523,8 @@ mapEitherWithKey2 ::
   DeepMap '[k0, k1] v ->
   (DeepMap '[k0, k1] w, DeepMap '[k0, k1] x)
 mapEitherWithKey2 f =
-  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
-      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  ( Witherable.mapMaybe (Just ||| const Nothing)
+      *** Witherable.mapMaybe (const Nothing ||| Just)
   )
     . partition2 isLeft
     . mapShallowWithKey (\k0 -> mapShallowWithKey $ fmap . f k0)
@@ -3527,8 +3535,8 @@ mapEitherWithKey3 ::
   DeepMap '[k0, k1, k2] v ->
   (DeepMap '[k0, k1, k2] w, DeepMap '[k0, k1, k2] x)
 mapEitherWithKey3 f =
-  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
-      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  ( Witherable.mapMaybe (Just ||| const Nothing)
+      *** Witherable.mapMaybe (const Nothing ||| Just)
   )
     . partition3 isLeft
     . mapShallowWithKey \k0 -> mapShallowWithKey $ \k1 ->
@@ -3540,8 +3548,8 @@ mapEitherWithKey4 ::
   DeepMap '[k0, k1, k2, k3] v ->
   (DeepMap '[k0, k1, k2, k3] w, DeepMap '[k0, k1, k2, k3] x)
 mapEitherWithKey4 f =
-  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
-      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  ( Witherable.mapMaybe (Just ||| const Nothing)
+      *** Witherable.mapMaybe (const Nothing ||| Just)
   )
     . partition4 isLeft
     . mapShallowWithKey
@@ -3556,8 +3564,8 @@ mapEitherWithKey5 ::
   DeepMap '[k0, k1, k2, k3, k4] v ->
   (DeepMap '[k0, k1, k2, k3, k4] w, DeepMap '[k0, k1, k2, k3, k4] x)
 mapEitherWithKey5 f =
-  ( Data.Map.Deep.mapMaybe (Just ||| const Nothing)
-      *** Data.Map.Deep.mapMaybe (const Nothing ||| Just)
+  ( Witherable.mapMaybe (Just ||| const Nothing)
+      *** Witherable.mapMaybe (const Nothing ||| Just)
   )
     . partition5 isLeft
     . mapShallowWithKey
